@@ -1,6 +1,7 @@
-from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.preprocessing import MinMaxScaler
 
 
 class IndexTracker(object):
@@ -51,3 +52,38 @@ def get_pts(batch, grid, i, batch_size):
     if len(pts) == 0:
         raise StopIteration
     return pts
+
+def show_cube(traces, clip_value, strides=10):
+    scaler = MinMaxScaler()
+    cube = np.clip(traces, -clip_value, clip_value)
+
+    scaler.fit(cube.reshape((-1, 1)))
+    cube = scaler.transform(cube.reshape((-1, 1))).reshape(cube.shape)
+
+    ax = plt.gca(projection='3d')
+    x, y = np.mgrid[0:cube.shape[0], 0:cube.shape[1]]
+    ax.plot_surface(x, y, np.zeros_like(x) + cube.shape[2],
+                    facecolors=np.repeat(cube[:, :, -1:], 3, axis=-1),
+                    rstride=strides, cstride=strides)
+
+    y, z = np.mgrid[0:cube.shape[1], 0:cube.shape[2]]
+    ax.plot_surface(np.zeros_like(y) + 0, y, z,
+                    facecolors=np.transpose(np.repeat(cube[:1, :, :], 3, axis=0), (1, 2, 0)),
+                    rstride=strides, cstride=strides)
+
+    x, z = np.mgrid[0:cube.shape[0], 0:cube.shape[2]]
+    ax.plot_surface(x, np.zeros_like(x) + cube.shape[1], z,
+                    facecolors=np.transpose(np.repeat(cube[:, -1:, :], 3, axis=1), (0, 2, 1)),
+                    rstride=strides, cstride=strides)
+
+    ax.plot([0, cube.shape[0]], [cube.shape[1], cube.shape[1]],
+            [cube.shape[2], cube.shape[2]], c="w")
+    ax.plot([0, 0], [0, cube.shape[1]], [cube.shape[2], cube.shape[2]], c="w")
+    ax.plot([0, 0], [cube.shape[1], cube.shape[1]], [0, cube.shape[2]], c="w")
+
+    ax.set_zlim([cube.shape[2], 0])
+    ax.set_xlabel("i-lines")
+    ax.set_ylabel("x-lines")
+    ax.set_zlabel("samples")
+    plt.show()
+
