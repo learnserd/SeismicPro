@@ -72,7 +72,7 @@ def make_bin_index(dfr, dfs, dfx, origin, phi, bin_size):
     return dfm
 
 
-class SeismicIndex(DatasetIndex):
+class FieldIndex(DatasetIndex):
     def __init__(self, *args, **kwargs):
         self._idf = None
         super().__init__(*args, **kwargs)
@@ -95,5 +95,5 @@ class SeismicIndex(DatasetIndex):
         return index
     
     def create_subset(self, index):
-        """ Return a new SeismicIndex based on the subset of indices given. """
+        """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
