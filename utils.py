@@ -1,3 +1,5 @@
+import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -87,3 +89,9 @@ def show_cube(traces, clip_value, strides=10):
     ax.set_zlabel("samples")
     plt.show()
 
+def get_file_by_index(path, index):
+    all_files = glob.glob(os.path.join(path, '*.sgy'))
+    file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
+    if len(file) != 1:
+        return None
+    return file[0]

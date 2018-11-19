@@ -5,8 +5,11 @@ import segyio
 import matplotlib.pyplot as plt
 from numba import njit
 
-from dataset import action, inbatch_parallel, Batch, FilesIndex, DatasetIndex, ImagesBatch, any_action_failed
+from dataset import (action, inbatch_parallel, Dataset,
+                     Batch, FilesIndex, DatasetIndex,
+                     ImagesBatch, any_action_failed)
 
+from field_index import FieldIndex
 from utils import IndexTracker
 
 
@@ -54,24 +57,82 @@ class SeismicBatch(Batch):
             self.meta = np.array([None] * len(self.index))
 
     @action
-    def load(self, src=None, fmt=None, components=None, *args, **kwargs):
-        return self._load_data(src, fmt, components)
+    @inbatch_parallel(init="indices", target="threads")
+    def to_2d(self, index):
+        pos = self.get_pos(None, "indices", index)
+        traces = self.traces[pos]
+        if len(traces) == 0:
+            return
+        try:
+            traces_2d = np.vstack(traces)
+        except ValueError:
+            shape = (len(traces), max([len(t) for t in traces]))
+            traces_2d = np.zeros(shape)
+            for i in range(len(traces)):
+                traces_2d[i, :len(traces[i])] = traces[i]
+        self.traces[pos] = traces_2d
+    
+    @action
+    def load(self, src=None, path=None, fmt=None, *args, **kwargs):
+        if isinstance(self.index, FilesIndex) or (src is not None):
+            return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
+        elif isinstance(self.index, FieldIndex):
+            return self._load_from_traces(path=path, fmt=fmt, *args, **kwargs)
+        else:
+            raise NotImplementedError("Unknown index type.")
+    
+    def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
+                          get_file_by_index=None):
+        src = []
+        traces = []
+        pos = []
+        
+        idf = self.index._idf
+        idf['_pos'] = np.arange(len(idf))
+
+        for index, group in idf.groupby(['tape', 'xid']):
+            file = get_file_by_index(path, index)
+            if file is not None:
+                src.append(file)
+                traces.append(group['channel'].values)
+                pos.extend(group['_pos'].values)
+
+        lset = Dataset(DatasetIndex(np.arange(len(src))), type(self))
+        lbatch = lset.next_batch(len(lset)).load(src=src, fmt=fmt, traces=traces)
+        
+        all_traces = np.array([t for item in lbatch.traces for t in item] + [None])[:-1]
+        
+        idf['_trace'] = np.nan
+        idf.iloc[pos, idf.columns.get_loc('_trace')] = all_traces
+        
+        for index, group in idf.groupby(level=0):
+            ipos = self.get_pos(None, "indices", index)
+            self.traces[ipos] = group.dropna(axis=0).sort_values(by=sort_by)['_trace'].values
+            self.meta[ipos] = dict(sorting=None)
+        
+        idf.drop(labels=['_pos', '_trace'], axis=1, inplace=True)
+        
+        return self
+        
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_data(self, index, src=None, fmt=None, components=None, *args, **kwargs):
+    def _load_from_paths(self, index, src=None, fmt=None, traces=None, *args, **kwargs):
         if src is not None:
             path = src[index]
-        if isinstance(self.index, FilesIndex):
+        elif isinstance(self.index, FilesIndex):
             path = self.index.get_fullpath(index)  # pylint: disable=no-member
         else:
-            raise ValueError("Source path is not specified")
+            raise ValueError("Source is not specified")
         pos = self.get_pos(None, "indices", index)
         if fmt == "segy":
             with segyio.open(path, strict=False) as sf:
-                if sf.sorting is not None:
+                if (sf.sorting is not None) and (traces is None):
                     self.traces[pos] = segyio.tools.cube(sf)
                 else:
-                    self.traces[pos] = sf.trace.raw[:]
+                    if traces is None:
+                        self.traces[pos] = sf.trace.raw[:]
+                    else:
+                        self.traces[pos] = sf.trace.raw[:][traces[index]]
                 self.meta[pos] = segyio.tools.metadata(sf).__dict__
         elif fmt == "pts":
             pdir = os.path.split(path)[0] + '/*.pts'
