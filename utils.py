@@ -1,12 +1,13 @@
+"""Utils."""
 import os
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from sklearn.preprocessing import MinMaxScaler
 
 
 class IndexTracker(object):
+    """Docstring."""
     def __init__(self, ax, X, scroll_step=1, slice_names=None,
                  cmap=None, pts=None, axes_names=None):
         self.ax = ax
@@ -16,7 +17,7 @@ class IndexTracker(object):
                             if slice_names is None else slice_names)
         self.cmap = ("gray" if cmap is None else cmap)
 
-        rows, cols, self.slices = X.shape
+        _, _, self.slices = X.shape
         self.ind = self.slices//2
         self.pts = pts
         self.axes_names = ["x", "y"] if axes_names is None else axes_names
@@ -24,6 +25,7 @@ class IndexTracker(object):
         self.update()
 
     def onscroll(self, event):
+        """Docstring."""
         print("%s %s" % (event.button, event.step))
         if event.button == 'up':
             self.ind = np.clip(self.ind + self.step, 0, self.slices - 1)
@@ -32,6 +34,7 @@ class IndexTracker(object):
         self.update()
 
     def update(self):
+        """Docstring."""
         self.ax.clear()
         self.ax.imshow(self.X[:, :, self.ind], cmap=self.cmap)
         self.ax.set_title('slice %s' % self.slice_names[self.ind])
@@ -41,8 +44,7 @@ class IndexTracker(object):
         self.ax.set_xlim([0, self.X.shape[1]])
         self.ax.set_ylim([self.X.shape[0], 0])
         if self.pts is not None:
-            pcolors = np.linspace(0, 1, len(self.pts))
-            for i, arr in enumerate(self.pts):
+            for arr in self.pts:
                 arr = arr[arr[:, -1] == self.ind]
                 if len(arr) == 0:
                     continue
@@ -50,12 +52,15 @@ class IndexTracker(object):
 
 
 def get_pts(batch, grid, i, batch_size):
+    """Docstring."""
+    _ = batch
     pts = grid[i * batch_size: (i + 1) * batch_size]
     if len(pts) == 0:
         raise StopIteration
     return pts
 
 def show_cube(traces, clip_value, strides=10):
+    """Docstring."""
     scaler = MinMaxScaler()
     cube = np.clip(traces, -clip_value, clip_value)
 
@@ -90,6 +95,7 @@ def show_cube(traces, clip_value, strides=10):
     plt.show()
 
 def get_file_by_index(path, index):
+    """Docstring."""
     all_files = glob.glob(os.path.join(path, '*.sgy'))
     file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
     if len(file) != 1:
