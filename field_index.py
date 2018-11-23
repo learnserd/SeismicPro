@@ -1,7 +1,49 @@
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 from dataset import DatasetIndex
+
+def get_phi(dfr, dfs):
+    """Docstring."""
+    incl = []
+    for _, group in dfs.groupby('sline'):
+        reg = LinearRegression().fit(group['x'].values.reshape((-1, 1)), group['y'].values)
+        incl.append(reg.coef_[0])
+    for _, group in dfr.groupby('rline'):
+        reg = LinearRegression().fit(group['x'].values.reshape((-1, 1)), group['y'].values)
+        incl.append(reg.coef_[0])
+    return np.median(np.arctan(incl) % (np.pi / 2)) * 180 / np.pi
+
+def pstd(a, pts, bin_size):
+    """Docstring."""
+    npts = pts + np.array(a)
+    sx = int(np.min(npts[:, 0]) // bin_size)
+    sy = int(np.min(npts[:, 1]) // bin_size)
+    tx = int(np.max(npts[:, 0]) // bin_size + 1)
+    ty = int(np.max(npts[:, 1]) // bin_size + 1)
+    h, _, _ = np.histogram2d(npts[:, 0], npts[:, 1],
+                             bins=[bin_size * np.arange(sx, tx + 1),
+                                   bin_size * np.arange(sy, ty + 1)])
+    return np.std(h)
+
+def grid_shift(pts, bin_size, iters=10):
+    """Docstring."""
+    minv = np.inf
+    shift = np.zeros(2)
+    for i in range(iters):
+        a = bin_size * np.random.random(2)
+        v = pstd(a, pts, bin_size)
+        if v < minv:
+            minv = v
+            shift = a
+    return shift
+
+def rot_2d(arr, phi):
+    """Docstring."""
+    c, s = np.cos(phi), np.sin(phi)
+    rotm = np.array([[c, -s], [s, c]])
+    return np.dot(rotm, arr.T).T
 
 def make_shot_index(dfr, dfs, dfx):
     """Docstring."""
@@ -25,8 +67,9 @@ def make_shot_index(dfr, dfs, dfx):
 
     return dfm
 
-def make_bin_index(dfr, dfs, dfx, origin, phi, bin_size):
+def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None):
     """Docstring."""
+    adjust = False
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
@@ -41,20 +84,27 @@ def make_bin_index(dfr, dfs, dfx, origin, phi, bin_size):
     dfm['x_m'] = (dfm['x_s'] + dfm['x_r']) / 2.
     dfm['y_m'] = (dfm['y_s'] + dfm['y_r']) / 2.
 
-    phi = -phi * np.pi / 180
-    rotm = np.array([[np.cos(phi), -np.sin(phi)], [np.sin(phi), np.cos(phi)]])
-    vec = np.dot(rotm, (dfm[['x_m', 'y_m']].values - origin).T).T
+    if origin is None and phi is None:
+        phi = get_phi(dfr, dfs)
+        origin = np.min(dfm[['x_m', 'y_m']].values, axis=0)
+        adjust = True
+
+    vec = rot_2d(dfm[['x_m', 'y_m']].values - origin, -np.radians(phi))
     dfm['x_m2'] = vec[:, 0]
     dfm['y_m2'] = vec[:, 1]
 
-    if (dfm['x_m2'].min() < 0) or (dfm['y_m2'].min() < 0):
-        raise ValueError("Some points are out of gird.")
+    if adjust:
+        shift = grid_shift(dfm[['x_m2', 'y_m2']].values, bin_size)
+        dfm[['x_m2', 'y_m2']] = dfm[['x_m2', 'y_m2']].values + shift
+        origin -= rot_2d(shift.reshape((1, 2)), -np.radians(phi))[0]
 
-    nx = int(dfm['x_m2'].max() // bin_size) + 1
-    ny = int(dfm['y_m2'].max() // bin_size) + 1
 
-    xbins = np.linspace(0, bin_size * nx, nx + 1)
-    ybins = np.linspace(0, bin_size * ny, ny + 1)
+    sx = int(np.min(dfm['x_m2'].values) // bin_size)
+    sy = int(np.min(dfm['y_m2'].values) // bin_size)
+    tx = int(np.max(dfm['x_m2'].values) // bin_size + 1)
+    ty = int(np.max(dfm['y_m2'].values) // bin_size + 1)
+    xbins = bin_size * np.arange(sx, tx + 1)
+    ybins = bin_size * np.arange(sy, ty + 1)
 
     dfm['x_index'] = np.digitize(dfm['x_m2'].values, xbins)
     dfm['y_index'] = np.digitize(dfm['y_m2'].values, ybins)
@@ -71,24 +121,28 @@ def make_bin_index(dfr, dfs, dfx, origin, phi, bin_size):
 
     dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
-    return dfm
+    meta = dict(origin=origin, phi=phi)
+    
+    return dfm, meta
 
 
 class FieldIndex(DatasetIndex):
     """Docstring."""
     def __init__(self, *args, **kwargs):
         self._idf = None
+        self.meta = None
         super().__init__(*args, **kwargs)
 
     def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None,
-                    origin=None, phi=None, bin_size=None):
+                    bin_size=None, origin=None, phi=None):
         """ Build index. """
         if index is not None:
             return self.build_from_index(index, idf)
-        if origin is None:
+        if bin_size is None:
             df = make_shot_index(dfr, dfs, dfx)
         else:
-            df = make_bin_index(dfr, dfs, dfx, origin, phi, bin_size)
+            df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi)
+            self.meta = meta
         self._idf = df
         return df.index.levels[0]
 
