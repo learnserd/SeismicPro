@@ -8,10 +8,18 @@ def get_phi(dfr, dfs):
     """Docstring."""
     incl = []
     for _, group in dfs.groupby('sline'):
-        reg = LinearRegression().fit(group['x'].values.reshape((-1, 1)), group['y'].values)
+        x, y = group['x'].values, group['y'].values
+        if np.std(y) > np.std(x):
+            reg = LinearRegression().fit(y.reshape((-1, 1)), x)
+        else:
+            reg = LinearRegression().fit(x.reshape((-1, 1)), y)
         incl.append(reg.coef_[0])
     for _, group in dfr.groupby('rline'):
-        reg = LinearRegression().fit(group['x'].values.reshape((-1, 1)), group['y'].values)
+        x, y = group['x'].values, group['y'].values
+        if np.std(y) > np.std(x):
+            reg = LinearRegression().fit(y.reshape((-1, 1)), x)
+        else:
+            reg = LinearRegression().fit(x.reshape((-1, 1)), y)
         incl.append(reg.coef_[0])
     return np.median(np.arctan(incl) % (np.pi / 2)) * 180 / np.pi
 
@@ -122,7 +130,7 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None):
     dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
     meta = dict(origin=origin, phi=phi)
-    
+
     return dfm, meta
 
 
