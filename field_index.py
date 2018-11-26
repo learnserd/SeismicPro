@@ -45,7 +45,7 @@ def grid_shift(pts, bin_size, iters=10):
         if v < minv:
             minv = v
             shift = a
-    return shift
+    return -shift
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -97,15 +97,14 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None):
         origin = np.min(dfm[['x_m', 'y_m']].values, axis=0)
         adjust = True
 
-    vec = rot_2d(dfm[['x_m', 'y_m']].values - origin, -np.radians(phi))
+    vec = rot_2d(dfm[['x_m', 'y_m']].values - origin, 0.5 * np.pi - np.radians(phi))
     dfm['x_m2'] = vec[:, 0]
     dfm['y_m2'] = vec[:, 1]
 
     if adjust:
         shift = grid_shift(dfm[['x_m2', 'y_m2']].values, bin_size)
         dfm[['x_m2', 'y_m2']] = dfm[['x_m2', 'y_m2']].values + shift
-        origin -= rot_2d(shift.reshape((1, 2)), -np.radians(phi))[0]
-
+        origin += rot_2d(shift.reshape((1, 2)), -0.5 * np.pi + np.radians(phi))[0]
 
     sx = int(np.min(dfm['x_m2'].values) // bin_size)
     sy = int(np.min(dfm['y_m2'].values) // bin_size)
