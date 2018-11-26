@@ -1,3 +1,4 @@
+"""Docstring."""
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
@@ -8,7 +9,7 @@ from dataset import DatasetIndex
 def bins_digitize(a, b, p, bin_size):
     """Docstring."""
     phi = np.arctan2(*(b - a)[::-1])
-    x = rot_2d((b - a).reshape((-1 , 2)), -phi)[0, 0]
+    x = rot_2d((b - a).reshape((-1, 2)), -phi)[0, 0]
     pp = rot_2d((p - a).reshape((-1, 2)), -phi)[:, 0]
     bins = np.arange(0, x + bin_size, bin_size)
     return np.digitize(pp, bins)
@@ -48,7 +49,7 @@ def grid_shift(pts, bin_size, iters):
     """Docstring."""
     minv = np.inf
     shift = np.zeros(2)
-    for i in range(iters):
+    for _ in range(iters):
         a = bin_size * np.random.random(2)
         v = pstd(a, pts, bin_size)
         if v < minv:
@@ -69,7 +70,7 @@ def segment_shift(pts, bin_size, iters):
     """Docstring."""
     minv = np.inf
     shift = 0.
-    for i in range(iters):
+    for _ in range(iters):
         a = bin_size * np.random.random()
         v = pstd_1d(a, pts, bin_size)
         if v < minv:
@@ -125,7 +126,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     meta = {}
 
     for rline, group in dfm.groupby('rline'):
-        pts = group[['x_m', 'y_m']].values        
+        pts = group[['x_m', 'y_m']].values
         if phi is None:
             reg = LinearRegression().fit(pts[:, :1], pts[:, 1])
             x_min = pts[np.argmin(pts[:, 0]), 0]
@@ -192,7 +193,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         phi = np.radians(phi)
     if phi > 0:
         phi += -np.pi / 2
- 
+
     if origin is None:
         origin = np.min(dfm[['x_m', 'y_m']].values, axis=0)
         vec = rot_2d(dfm[['x_m', 'y_m']].values, -phi)
@@ -206,10 +207,10 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         ty = int((dfm['y_m2'].max() - shift[1]) // bin_size + 1)
         xbins = shift[0] + bin_size * np.arange(sx, tx + 1)
         ybins = shift[1] + bin_size * np.arange(sy, ty + 1)
-        
+
         origin = rot_2d(np.array([[xbins[0], ybins[0]]]), phi)[0]
     else:
-        p = rot_2d(prigin.reshape((1, 2)), -phi)[0]
+        p = rot_2d(origin.reshape((1, 2)), -phi)[0]
         xbins = np.arange(p[0], dfm['x_m2'].max() + bin_size, bin_size)
         ybins = np.arange(p[1], dfm['y_m2'].max() + bin_size, bin_size)
 
