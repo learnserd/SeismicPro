@@ -25,7 +25,7 @@ def get_phi(dfr, dfs):
         incl.append(reg.coef_[0])
     return np.median(np.arctan(incl) % (np.pi / 2))
 
-def bins_shift(pts, bin_size, iters):
+def random_bins_shift(pts, bin_size, iters):
     """Docstring."""
     t = np.max(pts, axis=0).reshape((-1, 1))
     min_unif = np.inf
@@ -44,6 +44,43 @@ def bins_shift(pts, bin_size, iters):
             min_unif = unif
             best_shift = shift
     return best_shift
+
+def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
+    """Docstring."""
+    t = np.max(pts, axis=0).reshape((-1, 1))
+    shift = np.zeros(pts.ndim)
+    sh = []
+    hh = []    
+    for _ in range(max_iters):
+        s = bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
+        bins = [np.arange(a, b + bin_size, bin_size) for a, b in zip(s + shift, t)]
+        if pts.ndim == 2:
+            h = np.histogram2d(*pts.T, bins=bins)[0]
+            dif = np.diff(h, axis=0) / 2.
+            mx = np.vstack([np.max(h[i: i + 2], axis=0) for i in range(h.shape[0] - 1)])
+            ratio = dif[mx > 0] / mx[mx > 0]
+            xs = bin_size * np.mean(ratio)
+            dif = np.diff(h, axis=1) / 2.
+            mx = np.vstack([np.max(h[:, i: i + 2], axis=1) for i in range(h.shape[1] - 1)]).T
+            ratio = dif[mx > 0] / mx[mx > 0]
+            ys = bin_size * np.mean(ratio)
+            move = np.array([xs, ys])
+        elif pts.ndim == 1:
+            h = np.histogram(pts, bins=bins[0])[0]
+            dif = np.diff(h) / 2.
+            mx = np.hstack([np.max(h[i: i + 2]) for i in range(len(h) - 1)])
+            ratio = dif[mx > 0] / mx[mx > 0]
+            xs = bin_size * np.mean(ratio)
+            move = np.array([xs])
+        else:
+            raise ValueError("pts should be ndim = 1 or 2.")
+        sh.append(shift.copy())
+        hh.append(np.std(h))
+        if np.linalg.norm(move) < bin_size * eps:
+            break
+        shift += move
+    i = np.argmin(hh)
+    return sh[i] % bin_size
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -108,7 +145,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         px, y = pts[:, 0], np.mean(pts[:, 1])
 
         if origin is None:
-            shift = bins_shift(px, bin_size, iters)
+            shift = gradient_bins_shift(px, bin_size, iters)
             s = shift + bin_size * ((np.min(px) - shift) // bin_size)
             _origin = rot_2d(np.array([[s, y]]), _phi)[0]
         else:
@@ -163,7 +200,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     pts = rot_2d(dfm[['x_m', 'y_m']].values, -phi)
 
     if origin is None:
-        shift = bins_shift(pts, bin_size, iters)
+        shift = gradient_bins_shift(pts, bin_size, iters)
         s = shift + bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
         origin = rot_2d(s.reshape((1, 2)), phi)[0]
     else:
