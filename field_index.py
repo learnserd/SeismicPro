@@ -6,14 +6,6 @@ from sklearn.linear_model import LinearRegression
 from dataset import DatasetIndex
 
 
-def bins_digitize(a, b, p, bin_size):
-    """Docstring."""
-    phi = np.arctan2(*(b - a)[::-1])
-    x = rot_2d((b - a).reshape((-1, 2)), -phi)[0, 0]
-    pp = rot_2d((p - a).reshape((-1, 2)), -phi)[:, 0]
-    bins = np.arange(0, x + bin_size, bin_size)
-    return np.digitize(pp, bins)
-
 def get_phi(dfr, dfs):
     """Docstring."""
     incl = []
@@ -33,50 +25,25 @@ def get_phi(dfr, dfs):
         incl.append(reg.coef_[0])
     return np.median(np.arctan(incl) % (np.pi / 2))
 
-def pstd(a, pts, bin_size):
+def bins_shift(pts, bin_size, iters):
     """Docstring."""
-    npts = pts + np.array(a)
-    sx = int(np.min(npts[:, 0]) // bin_size)
-    sy = int(np.min(npts[:, 1]) // bin_size)
-    tx = int(np.max(npts[:, 0]) // bin_size + 1)
-    ty = int(np.max(npts[:, 1]) // bin_size + 1)
-    h, _, _ = np.histogram2d(npts[:, 0], npts[:, 1],
-                             bins=[bin_size * np.arange(sx, tx + 1),
-                                   bin_size * np.arange(sy, ty + 1)])
-    return np.std(h)
-
-def grid_shift(pts, bin_size, iters):
-    """Docstring."""
-    minv = np.inf
-    shift = np.zeros(2)
+    t = np.max(pts, axis=0).reshape((-1, 1))
+    min_unif = np.inf
+    best_shift = np.zeros(pts.ndim)
     for _ in range(iters):
-        a = bin_size * np.random.random(2)
-        v = pstd(a, pts, bin_size)
-        if v < minv:
-            minv = v
-            shift = a
-    return -shift
-
-def pstd_1d(a, pts, bin_size):
-    """Docstring."""
-    npts = pts + a
-    sx = int(np.min(npts) // bin_size)
-    tx = int(np.max(npts) // bin_size + 1)
-    bins = bin_size * np.arange(sx, tx + 1)
-    h, _ = np.histogram(npts, bins=bins)
-    return np.std(h)
-
-def segment_shift(pts, bin_size, iters):
-    """Docstring."""
-    minv = np.inf
-    shift = 0.
-    for _ in range(iters):
-        a = bin_size * np.random.random()
-        v = pstd_1d(a, pts, bin_size)
-        if v < minv:
-            minv = v
-            shift = a
-    return -shift
+        shift = -bin_size * np.random.random(pts.ndim)
+        s = bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
+        bins = [np.arange(a, b + bin_size, bin_size) for a, b in zip(s + shift, t)]
+        if pts.ndim == 2:
+            unif = np.std(np.histogram2d(*pts.T, bins=bins)[0])
+        elif pts.ndim == 1:
+            unif = np.std(np.histogram(pts, bins=bins[0])[0])
+        else:
+            raise ValueError("pts should be ndim = 1 or 2.")
+        if unif < min_unif:
+            min_unif = unif
+            best_shift = shift
+    return best_shift
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -128,28 +95,28 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     for rline, group in dfm.groupby('rline'):
         pts = group[['x_m', 'y_m']].values
         if phi is None:
-            reg = LinearRegression().fit(pts[:, :1], pts[:, 1])
-            x_min = pts[np.argmin(pts[:, 0]), 0]
-            a = np.array([x_min, reg.predict(x_min)])
-            x_max = pts[np.argmax(pts[:, 0]), 0]
-            b = np.array([x_max, reg.predict(x_max)])
-            _phi = np.arctan2(*(b - a)[::-1])
+            if np.std(pts[:, 0]) > np.std(pts[:, 1]):
+                reg = LinearRegression().fit(pts[:, :1], pts[:, 1])
+                _phi = np.arctan(reg.coef_)[0]
+            else:
+                reg = LinearRegression().fit(pts[:, 1:], pts[:, 0])
+                _phi = np.arctan(1. / reg.coef_)[0]
         else:
             _phi = np.radians(phi[rline])
 
-        pts = rot_2d(pts.reshape((-1, 2)), -_phi)
+        pts = rot_2d(pts, -_phi)
         px, y = pts[:, 0], np.mean(pts[:, 1])
 
         if origin is None:
-            shift = segment_shift(px, bin_size, iters)
-            sx = int((np.min(px) - shift) // bin_size)
-            tx = int((np.max(px) - shift) // bin_size + 1)
-            bins = shift + bin_size * np.arange(sx, tx + 1)
-            _origin = rot_2d(np.array([[bins[0], y]]), _phi)[0]
+            shift = bins_shift(px, bin_size, iters)
+            s = shift + bin_size * ((np.min(px) - shift) // bin_size)
+            _origin = rot_2d(np.array([[s, y]]), _phi)[0]
         else:
             _origin = origin[rline]
-            p = rot_2d(_origin.reshape((-1, 2)), -_phi)[0, 0]
-            bins = np.arange(p, np.max(px) + bin_size, bin_size)
+            s = rot_2d(_origin.reshape((-1, 2)), -_phi)[0, 0]
+
+        t = np.max(px)
+        bins = np.arange(s, t + bin_size, bin_size)
 
         index = np.digitize(px, bins)
 
@@ -157,13 +124,12 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         meta.update({rline: dict(origin=_origin, phi=np.rad2deg(_phi))})
 
     bin_indices = (dfm['rline'].astype(str) + '/' + dfm['x_index'].astype(str)).values
+    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
     dfm['r2'] = (dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2
 
     dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver', 'x_index'], axis=1)
-
-    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
     return dfm, meta
 
@@ -194,40 +160,27 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     if phi > 0:
         phi += -np.pi / 2
 
+    pts = rot_2d(dfm[['x_m', 'y_m']].values, -phi)
+
     if origin is None:
-        origin = np.min(dfm[['x_m', 'y_m']].values, axis=0)
-        vec = rot_2d(dfm[['x_m', 'y_m']].values, -phi)
-        dfm['x_m2'] = vec[:, 0]
-        dfm['y_m2'] = vec[:, 1]
-        shift = grid_shift(dfm[['x_m2', 'y_m2']].values, bin_size, iters)
-
-        sx = int((dfm['x_m2'].min() - shift[0]) // bin_size)
-        sy = int((dfm['y_m2'].min() - shift[1]) // bin_size)
-        tx = int((dfm['x_m2'].max() - shift[0]) // bin_size + 1)
-        ty = int((dfm['y_m2'].max() - shift[1]) // bin_size + 1)
-        xbins = shift[0] + bin_size * np.arange(sx, tx + 1)
-        ybins = shift[1] + bin_size * np.arange(sy, ty + 1)
-
-        origin = rot_2d(np.array([[xbins[0], ybins[0]]]), phi)[0]
+        shift = bins_shift(pts, bin_size, iters)
+        s = shift + bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
+        origin = rot_2d(s.reshape((1, 2)), phi)[0]
     else:
-        p = rot_2d(origin.reshape((1, 2)), -phi)[0]
-        xbins = np.arange(p[0], dfm['x_m2'].max() + bin_size, bin_size)
-        ybins = np.arange(p[1], dfm['y_m2'].max() + bin_size, bin_size)
+        s = rot_2d(origin.reshape((1, 2)), -phi)[0]
 
-    dfm['x_index'] = np.digitize(dfm['x_m2'].values, xbins)
-    dfm['y_index'] = np.digitize(dfm['y_m2'].values, ybins)
+    t = np.max(pts, axis=0)
+    xbins, ybins = np.array([np.arange(a, b + bin_size, bin_size) for a, b in zip(s, t)])
 
-    bin_indices = (dfm['x_index'].astype(str) + '/' + dfm['y_index'].astype(str)).values
+    x_index = np.digitize(pts[:, 0], xbins)
+    y_index = np.digitize(pts[:, 1], ybins)
 
-    dfm['x_c'] = xbins[dfm['x_index'].values] + xbins[dfm['x_index'].values - 1]
-    dfm['y_c'] = ybins[dfm['y_index'].values] + ybins[dfm['y_index'].values - 1]
+    bin_indices = np.array([ix + '/' + iy for ix, iy in zip(x_index.astype(str), y_index.astype(str))])
+    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
     dfm['r2'] = (dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2
 
-    dfm = dfm.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver',
-                           'x_m2', 'y_m2', 'x_index', 'y_index', 'x_c', 'y_c'], axis=1)
-
-    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
+    dfm = dfm.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'], axis=1)
 
     meta = dict(origin=origin, phi=np.rad2deg(phi))
 
