@@ -86,7 +86,7 @@ class SeismicBatch(Batch):
             raise NotImplementedError("Unknown index type.")
 
     def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
-                          get_file_by_index=None):
+                          get_file_by_index=None, skip_channels=0):
         """Docstring."""
         src = []
         channels = []
@@ -106,7 +106,7 @@ class SeismicBatch(Batch):
             return self
 
         batch = (type(self)(DatasetIndex(np.arange(len(src))))
-                 .load(src=src, fmt=fmt, channels=channels))
+                 .load(src=src, fmt=fmt, channels=channels, skip_channels=skip_channels))
 
         all_traces = np.array([t for item in batch.traces for t in item] + [None])[:-1]
 
@@ -128,7 +128,7 @@ class SeismicBatch(Batch):
 
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_from_paths(self, index, src=None, fmt=None, channels=None):
+    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0):
         """Docstring."""
         if src is not None:
             path = src[index]
@@ -143,9 +143,9 @@ class SeismicBatch(Batch):
                     self.traces[pos] = segyio.tools.cube(sf)
                 else:
                     if channels is None:
-                        self.traces[pos] = sf.trace.raw[:]
+                        self.traces[pos] = sf.trace.raw[:][slice(skip_channels, None)]
                     else:
-                        self.traces[pos] = sf.trace.raw[:][channels[index] - 1]
+                        self.traces[pos] = sf.trace.raw[:][channels[index] - 1 + skip_channels]
                 self.meta[pos] = segyio.tools.metadata(sf).__dict__
         elif fmt == "pts":
             pdir = os.path.split(path)[0] + '/*.pts'
@@ -156,6 +156,19 @@ class SeismicBatch(Batch):
             self.annotation[pos] = np.array(self.annotation[pos])
         else:
             raise NotImplementedError("Unknown file format.")
+
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def sort_traces(self, index, sort_by):
+        """Docstring."""
+        pos = self.get_pos(None, "indices", index)
+        if isinstance(self.index, FieldIndex):
+            idf = self.index._idf.loc[index]
+        else:
+            raise ValueError("Sorting is not supported for this Index class")
+        order = np.argsort(idf[sort_by].values)
+        self.traces[pos] = self.traces[pos][order]
+        self.meta[pos]['sorting'] = sort_by
 
     @action
     @inbatch_parallel(init="indices", target="threads")
