@@ -5,6 +5,8 @@ from sklearn.linear_model import LinearRegression
 
 from dataset import DatasetIndex
 
+from utils import show_1d_heatmap, show_2d_heatmap
+
 
 def get_phi(dfr, dfs):
     """Docstring."""
@@ -245,6 +247,8 @@ class FieldIndex(DatasetIndex):
             df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
             self.meta = meta
         self._idf = df
+        if bin_size is not None:
+            self.meta.update(dict(bin_size=bin_size))
         return df.index.levels[0]
 
     def build_from_index(self, index, idf):
@@ -255,3 +259,10 @@ class FieldIndex(DatasetIndex):
     def create_subset(self, index):
         """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
+    
+    def show_heatmap(self):
+        bin_size = self.meta['bin_size']
+        if isinstance(bin_size, (list, tuple, np.ndarray)):
+            show_2d_heatmap(self._idf, bin_size[0])
+        else:
+            show_1d_heatmap(self._idf, bin_size)

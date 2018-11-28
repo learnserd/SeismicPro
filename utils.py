@@ -2,6 +2,7 @@
 import os
 import glob
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 
@@ -101,3 +102,42 @@ def get_file_by_index(path, index):
     if len(file) != 1:
         return None
     return file[0]
+
+def show_1d_heatmap(idf, bin_size, *args, **kwargs):
+    """Docstring."""
+    bin_counts = idf.groupby(level=[0]).size()
+    bins = np.array([i.split('/') for i in bin_counts.index])
+
+    bindf = pd.DataFrame(bins, columns=['line', 'pos'])
+    bindf['line_code'] = bindf['line'].astype('category').cat.codes + 1
+    bindf = bindf.astype({'pos': 'int'})
+    bindf['counts'] = bin_counts.values
+    bindf = bindf.sort_values(by='line')
+
+    brange = np.max(bindf[['line_code', 'pos']].values, axis=0)
+    h = np.zeros(brange, dtype=int)
+    h[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
+    
+    heatmap = plt.imshow(h, *args, **kwargs)
+    plt.colorbar(heatmap)
+    plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
+    plt.xticks(np.arange(brange[1]), np.arange(brange[1]), fontsize=8)
+    plt.xlabel("Bins")
+    plt.ylabel("Line index")
+    plt.axes().set_aspect('auto')
+    plt.show()
+
+def show_2d_heatmap(idf, bin_size, *args, **kwargs):
+    """Docstring."""
+    bin_counts = idf.groupby(level=[0]).size()
+    bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
+    brange = np.max(bins, axis=0)
+
+    h = np.zeros(brange, dtype=int)
+    h[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
+
+    heatmap = plt.imshow(h.T, origin='lower', *args, **kwargs)
+    plt.colorbar(heatmap) 
+    plt.xlabel('x-Bins')
+    plt.xlabel('y-Bins')
+    plt.show()
