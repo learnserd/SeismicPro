@@ -1,11 +1,9 @@
 """Seismic batch."""
-import glob
-import os
 import numpy as np
-import segyio
+import pandas as pd
 import matplotlib.pyplot as plt
 from numba import njit
-import pywt
+from sklearn.preprocessing import MinMaxScaler
 
 def get_pts(batch, grid, i, batch_size):
     """Docstring."""
@@ -50,7 +48,7 @@ def show_cube(traces, clip_value, strides=10):
     ax.set_zlabel("samples")
     plt.show()
 
-def show_1d_heatmap(idf, bin_size, *args, **kwargs):
+def show_1d_heatmap(idf, *args, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([i.split('/') for i in bin_counts.index])
@@ -64,7 +62,7 @@ def show_1d_heatmap(idf, bin_size, *args, **kwargs):
     brange = np.max(bindf[['line_code', 'pos']].values, axis=0)
     h = np.zeros(brange, dtype=int)
     h[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
-    
+
     heatmap = plt.imshow(h, *args, **kwargs)
     plt.colorbar(heatmap)
     plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
@@ -74,7 +72,7 @@ def show_1d_heatmap(idf, bin_size, *args, **kwargs):
     plt.axes().set_aspect('auto')
     plt.show()
 
-def show_2d_heatmap(idf, bin_size, *args, **kwargs):
+def show_2d_heatmap(idf, *args, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
@@ -84,7 +82,7 @@ def show_2d_heatmap(idf, bin_size, *args, **kwargs):
     h[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
 
     heatmap = plt.imshow(h.T, origin='lower', *args, **kwargs)
-    plt.colorbar(heatmap) 
+    plt.colorbar(heatmap)
     plt.xlabel('x-Bins')
     plt.xlabel('y-Bins')
     plt.show()

@@ -5,8 +5,9 @@ import dill
 from dataset.dataset.models.base import BaseModel
 
 def make_hmm_data(batch, model, components):
+    """Docstring."""
     _ = model
-    if type(components) is str:
+    if isinstance(components, str):
         components = [components]
     src = [getattr(batch, comp) for comp in components]
     x = np.hstack([np.concatenate([np.concatenate(np.atleast_3d(arr)) for arr in comp])

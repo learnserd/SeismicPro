@@ -1,12 +1,11 @@
 """Seismic batch."""
 import glob
 import os
+from textwrap import dedent
 import numpy as np
 import matplotlib.pyplot as plt
-from numba import njit
 import segyio
 import pywt
-from textwrap import dedent
 
 from dataset import (action, inbatch_parallel, Batch,
                      FilesIndex, DatasetIndex,
@@ -14,12 +13,12 @@ from dataset import (action, inbatch_parallel, Batch,
 
 from field_index import FieldIndex
 from utils import IndexTracker, partialmethod
-from batch_tools import nj_sample_crops
+from batch_tools import nj_sample_crops, pts_to_indices
 
 
 ACTIONS_DICT = {
-    "clip": (np.clip, "numpy.clip", "clip values"), 
-    "gradient": (np.gradient, "numpy.gradient", "gradient"), 
+    "clip": (np.clip, "numpy.clip", "clip values"),
+    "gradient": (np.gradient, "numpy.gradient", "gradient"),
     "fft": (np.fft.fft, "numpy.fft.fft", "a Discrete Fourier Transform"),
     "ifft": (np.fft.ifft, "numpy.fft.ifft", "an inverse Discrete Fourier Transform"),
     "rfft": (np.fft.rfft, "numpy.fft.rfft", "a real-input Discrete Fourier Transform"),
@@ -249,7 +248,7 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, "indices", index)
         traces, pts, meta = self.traces[pos], self.annotation[pos], self.meta[pos]
 
-        if type(origin) in [list, tuple, np.ndarray]:
+        if isinstance(origin, (list, tuple, np.ndarray)):
             labels = np.array([None] * len(origin))
             sampled_pts = np.array(origin)
 

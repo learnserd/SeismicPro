@@ -52,7 +52,7 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
     t = np.max(pts, axis=0).reshape((-1, 1))
     shift = np.zeros(pts.ndim)
     sh = []
-    hh = []    
+    hh = []
     for _ in range(max_iters):
         s = bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
         bins = [np.arange(a, b + bin_size, bin_size) for a, b in zip(s + shift, t)]
@@ -259,8 +259,9 @@ class FieldIndex(DatasetIndex):
     def create_subset(self, index):
         """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
-    
+
     def show_heatmap(self):
+        """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
             show_2d_heatmap(self._idf, bin_size[0])

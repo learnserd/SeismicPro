@@ -1,19 +1,9 @@
 """Utils."""
 import os
 import glob
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import functools
-from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
-def get_file_by_index(path, index):
-    """Docstring."""
-    all_files = glob.glob(os.path.join(path, '*.sgy'))
-    file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
-    if len(file) != 1:
-        return None
-    return file[0]
 
 class IndexTracker(object):
     """Docstring."""
@@ -60,11 +50,13 @@ class IndexTracker(object):
                 self.ax.scatter(arr[:, 1], arr[:, 0], alpha=0.005)
 
 
-def rolling_window(a, window):
-    shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
-    strides = a.strides + (a.strides[-1],)
-    return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
-
+def get_file_by_index(path, index):
+    """Docstring."""
+    all_files = glob.glob(os.path.join(path, '*.sgy'))
+    file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
+    if len(file) != 1:
+        return None
+    return file[0]
 
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
