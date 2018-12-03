@@ -2,53 +2,60 @@
 import glob
 import os
 import numpy as np
-import segyio
 import matplotlib.pyplot as plt
 from numba import njit
+import segyio
+import pywt
+from textwrap import dedent
 
 from dataset import (action, inbatch_parallel, Batch,
                      FilesIndex, DatasetIndex,
                      ImagesBatch, any_action_failed)
 
 from field_index import FieldIndex
-from utils import IndexTracker
+from utils import IndexTracker, partialmethod
+from batch_tools import nj_sample_crops
 
 
-@njit(nogil=True)
-def nj_sample_crops(traces, pts, size):
-    """Docstring."""
-    res = np.zeros((len(pts), ) + size, dtype=traces.dtype)
-    asize = np.array(size)
-    offset = asize // 2
-    start = np.zeros(3, dtype=pts.dtype)
-    t_stop = np.zeros(3, dtype=pts.dtype)
-    c_stop = np.zeros(3, dtype=pts.dtype)
-    for i, p in enumerate(pts):
-        start[:p.size] = p - offset[:p.size]
-        t_stop[:p.size] = p + asize[:p.size] - offset[:p.size]
-
-        t_start = np.maximum(start, 0)
-        step = (np.minimum(p + asize[:p.size] - offset[:p.size],
-                           np.array(traces.shape)[:p.size]) - t_start[:p.size])
-
-        c_start = np.maximum(-start, 0)
-        c_stop[:p.size] = c_start[:p.size] + step
-
-        res[i][c_start[0]: c_stop[0], c_start[1]: c_stop[1], c_start[2]: c_stop[2]] =\
-            traces[t_start[0]: t_stop[0], t_start[1]: t_stop[1], t_start[2]: t_stop[2]]
-
-    return res
+ACTIONS_DICT = {
+    "clip": (np.clip, "numpy.clip", "clip values"), 
+    "gradient": (np.gradient, "numpy.gradient", "gradient"), 
+    "fft": (np.fft.fft, "numpy.fft.fft", "a Discrete Fourier Transform"),
+    "ifft": (np.fft.ifft, "numpy.fft.ifft", "an inverse Discrete Fourier Transform"),
+    "rfft": (np.fft.rfft, "numpy.fft.rfft", "a real-input Discrete Fourier Transform"),
+    "irfft": (np.fft.irfft, "numpy.fft.irfft", "a real-input inverse Discrete Fourier Transform"),
+    "dwt": (pywt.dwt, "pywt.dwt", "a single level Discrete Wavelet Transform"),
+    "idwt": (lambda x, *args, **kwargs: pywt.idwt(*x, *args, **kwargs), "pywt.idwt",
+             "a single level inverse Discrete Wavelet Transform"),
+    "wavedec": (pywt.wavedec, "pywt.wavedec", "a multilevel 1D Discrete Wavelet Transform"),
+    "waverec": (lambda x, *args, **kwargs: pywt.waverec(list(x), *args, **kwargs), "pywt.waverec",
+                "a multilevel 1D Inverse Discrete Wavelet Transform"),
+    "pdwt": (lambda x, part, *args, **kwargs: pywt.downcoef(part, x, *args, **kwargs), "pywt.downcoef",
+             "a partial Discrete Wavelet Transform data decomposition"),
+    "cwt": (lambda x, *args, **kwargs: pywt.cwt(x, *args, **kwargs)[0].T, "pywt.cwt", "a Continuous Wavelet Transform"),
+}
 
 
-def pts_to_indices(pts, meta):
-    """Docstring."""
-    starts = np.array([meta['ilines'][0], meta['xlines'][0], meta['samples'][0]])
-    steps = np.array([meta['ilines'][1] - meta['ilines'][0],
-                      meta['xlines'][1] - meta['xlines'][0],
-                      meta['samples'][1] - meta['samples'][0]])
-    return ((pts - starts) / steps).astype(int)
+TEMPLATE_DOCSTRING = """
+    TBD.
+"""
+TEMPLATE_DOCSTRING = dedent(TEMPLATE_DOCSTRING).strip()
 
 
+def add_actions(actions_dict, template_docstring):
+    """Add new actions
+    """
+    def decorator(cls):
+        """Returned decorator."""
+        for method_name, (func, full_name, description) in actions_dict.items():
+            docstring = template_docstring.format(full_name=full_name, description=description)
+            method = partialmethod(cls.apply_to_each_channel, func)
+            method.__doc__ = docstring
+            setattr(cls, method_name, method)
+        return cls
+    return decorator
+
+@add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
     """Docstring."""
     def __init__(self, index, preloaded=None):
@@ -57,6 +64,27 @@ class SeismicBatch(Batch):
             self.traces = np.array([None] * len(self.index))
             self.annotation = np.array([None] * len(self.index))
             self.meta = np.array([None] * len(self.index))
+
+    def _init_component(self, *args, **kwargs):
+        """Create and preallocate a new attribute with the name ``dst`` if it
+        does not exist and return batch indices."""
+        _ = args
+        dst = kwargs.get("dst")
+        if dst is None:
+            raise KeyError("dst argument must be specified")
+        if not hasattr(self, dst):
+            setattr(self, dst, np.array([None] * len(self.index)))
+        return self.indices
+
+    @action
+    @inbatch_parallel(init="_init_component", src="signal", dst="signal", target="threads")
+    def apply_to_each_channel(self, index, func, *args, src="traces", dst="traces", **kwargs):
+        """TBD.
+        """
+        i = self.get_pos(None, src, index)
+        src_data = getattr(self, src)[i]
+        dst_data = np.array([func(slc, *args, **kwargs) for slc in src_data])
+        getattr(self, dst)[i] = dst_data
 
     @action
     @inbatch_parallel(init="indices", target="threads")

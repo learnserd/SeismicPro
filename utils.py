@@ -4,8 +4,16 @@ import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import functools
 from sklearn.preprocessing import MinMaxScaler
 
+def get_file_by_index(path, index):
+    """Docstring."""
+    all_files = glob.glob(os.path.join(path, '*.sgy'))
+    file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
+    if len(file) != 1:
+        return None
+    return file[0]
 
 class IndexTracker(object):
     """Docstring."""
@@ -52,92 +60,30 @@ class IndexTracker(object):
                 self.ax.scatter(arr[:, 1], arr[:, 0], alpha=0.005)
 
 
-def get_pts(batch, grid, i, batch_size):
-    """Docstring."""
-    _ = batch
-    pts = grid[i * batch_size: (i + 1) * batch_size]
-    if len(pts) == 0:
-        raise StopIteration
-    return pts
+def rolling_window(a, window):
+    shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
+    strides = a.strides + (a.strides[-1],)
+    return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
-def show_cube(traces, clip_value, strides=10):
-    """Docstring."""
-    scaler = MinMaxScaler()
-    cube = np.clip(traces, -clip_value, clip_value)
 
-    scaler.fit(cube.reshape((-1, 1)))
-    cube = scaler.transform(cube.reshape((-1, 1))).reshape(cube.shape)
-
-    ax = plt.gca(projection='3d')
-    x, y = np.mgrid[0:cube.shape[0], 0:cube.shape[1]]
-    ax.plot_surface(x, y, np.zeros_like(x) + cube.shape[2],
-                    facecolors=np.repeat(cube[:, :, -1:], 3, axis=-1),
-                    rstride=strides, cstride=strides)
-
-    y, z = np.mgrid[0:cube.shape[1], 0:cube.shape[2]]
-    ax.plot_surface(np.zeros_like(y) + 0, y, z,
-                    facecolors=np.transpose(np.repeat(cube[:1, :, :], 3, axis=0), (1, 2, 0)),
-                    rstride=strides, cstride=strides)
-
-    x, z = np.mgrid[0:cube.shape[0], 0:cube.shape[2]]
-    ax.plot_surface(x, np.zeros_like(x) + cube.shape[1], z,
-                    facecolors=np.transpose(np.repeat(cube[:, -1:, :], 3, axis=1), (0, 2, 1)),
-                    rstride=strides, cstride=strides)
-
-    ax.plot([0, cube.shape[0]], [cube.shape[1], cube.shape[1]],
-            [cube.shape[2], cube.shape[2]], c="w")
-    ax.plot([0, 0], [0, cube.shape[1]], [cube.shape[2], cube.shape[2]], c="w")
-    ax.plot([0, 0], [cube.shape[1], cube.shape[1]], [0, cube.shape[2]], c="w")
-
-    ax.set_zlim([cube.shape[2], 0])
-    ax.set_xlabel("i-lines")
-    ax.set_ylabel("x-lines")
-    ax.set_zlabel("samples")
-    plt.show()
-
-def get_file_by_index(path, index):
-    """Docstring."""
-    all_files = glob.glob(os.path.join(path, '*.sgy'))
-    file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
-    if len(file) != 1:
-        return None
-    return file[0]
-
-def show_1d_heatmap(idf, bin_size, *args, **kwargs):
-    """Docstring."""
-    bin_counts = idf.groupby(level=[0]).size()
-    bins = np.array([i.split('/') for i in bin_counts.index])
-
-    bindf = pd.DataFrame(bins, columns=['line', 'pos'])
-    bindf['line_code'] = bindf['line'].astype('category').cat.codes + 1
-    bindf = bindf.astype({'pos': 'int'})
-    bindf['counts'] = bin_counts.values
-    bindf = bindf.sort_values(by='line')
-
-    brange = np.max(bindf[['line_code', 'pos']].values, axis=0)
-    h = np.zeros(brange, dtype=int)
-    h[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
-    
-    heatmap = plt.imshow(h, *args, **kwargs)
-    plt.colorbar(heatmap)
-    plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
-    plt.xticks(np.arange(brange[1]), np.arange(brange[1]), fontsize=8)
-    plt.xlabel("Bins")
-    plt.ylabel("Line index")
-    plt.axes().set_aspect('auto')
-    plt.show()
-
-def show_2d_heatmap(idf, bin_size, *args, **kwargs):
-    """Docstring."""
-    bin_counts = idf.groupby(level=[0]).size()
-    bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
-    brange = np.max(bins, axis=0)
-
-    h = np.zeros(brange, dtype=int)
-    h[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
-
-    heatmap = plt.imshow(h.T, origin='lower', *args, **kwargs)
-    plt.colorbar(heatmap) 
-    plt.xlabel('x-Bins')
-    plt.xlabel('y-Bins')
-    plt.show()
+def partialmethod(func, *frozen_args, **frozen_kwargs):
+    """Wrap a method with partial application of given positional and keyword
+    arguments.
+    Parameters
+    ----------
+    func : callable
+        A method to wrap.
+    frozen_args : misc
+        Fixed positional arguments.
+    frozen_kwargs : misc
+        Fixed keyword arguments.
+    Returns
+    -------
+    method : callable
+        Wrapped method.
+    """
+    @functools.wraps(func)
+    def method(self, *args, **kwargs):
+        """Wrapped method."""
+        return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
+    return method
