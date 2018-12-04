@@ -84,7 +84,7 @@ def show_2d_heatmap(idf, *args, **kwargs):
     heatmap = plt.imshow(h.T, origin='lower', *args, **kwargs)
     plt.colorbar(heatmap)
     plt.xlabel('x-Bins')
-    plt.xlabel('y-Bins')
+    plt.ylabel('y-Bins')
     plt.show()
 
 @njit(nogil=True)

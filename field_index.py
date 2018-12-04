@@ -264,6 +264,6 @@ class FieldIndex(DatasetIndex):
         """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
-            show_2d_heatmap(self._idf, bin_size[0])
+            show_2d_heatmap(self._idf)
         else:
-            show_1d_heatmap(self._idf, bin_size)
+            show_1d_heatmap(self._idf)
