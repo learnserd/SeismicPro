@@ -76,13 +76,26 @@ class SeismicBatch(Batch):
         return self.indices
 
     @action
-    @inbatch_parallel(init="_init_component", src="signal", dst="signal", target="threads")
+    @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
     def apply_to_each_channel(self, index, func, *args, src="traces", dst="traces", **kwargs):
         """TBD.
         """
         i = self.get_pos(None, src, index)
         src_data = getattr(self, src)[i]
         dst_data = np.array([func(slc, *args, **kwargs) for slc in src_data])
+        getattr(self, dst)[i] = dst_data
+
+    @action
+    @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
+    def trace_shift(self, index, *args, src="traces", shift_src=None, dst="traces", **kwargs):
+        """TBD.
+        """
+        i = self.get_pos(None, src, index)
+        traces = getattr(self, src)[i]
+        if isinstance(shift_src, str):
+            shifts = getattr(self, shift_src)[i]
+        
+        dst_data = np.array([traces[k][shifts[k]:] for k in range(len(traces))])
         getattr(self, dst)[i] = dst_data
 
     @action

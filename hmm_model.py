@@ -13,7 +13,7 @@ def make_hmm_data(batch, model, components):
     x = np.hstack([np.concatenate([np.concatenate(np.atleast_3d(arr)) for arr in comp])
                    for comp in src])
     lengths = np.concatenate([[len(arr[0])] * len(arr) for arr in src[0]])
-    return {"X": x, "lengths": lengths}
+    return {"X": x, "lengths": lengths, "shapes": np.array([len(arr) for arr in src[0]])}
 
 
 class HMModel(BaseModel):
@@ -89,7 +89,7 @@ class HMModel(BaseModel):
         self.estimator.fit(X, lengths)
         return list(self.estimator.monitor_.history)
 
-    def predict(self, X, lengths=None, *args, **kwargs):
+    def predict(self, X, lengths=None, shapes=None):
         """ Make prediction with the data provided.
         Parameters
         ----------
@@ -113,4 +113,6 @@ class HMModel(BaseModel):
             output = np.array(np.split(preds, np.cumsum(lengths)[:-1]) + [None])[:-1]
         else:
             output = preds
+        if shapes is not None:
+            output = np.array(np.split(output, np.cumsum(shapes)[:-1]) + [None])[:-1]
         return output

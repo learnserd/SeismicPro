@@ -52,7 +52,7 @@ class IndexTracker(object):
 
 def get_file_by_index(path, index):
     """Docstring."""
-    all_files = glob.glob(os.path.join(path, '*.sgy'))
+    all_files = glob.glob(path)
     file = [f for f in all_files if int(os.path.split(f)[1].split('_')[0]) == int(index[1])]
     if len(file) != 1:
         return None
