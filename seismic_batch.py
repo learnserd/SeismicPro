@@ -100,7 +100,7 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def to_2d(self, index):
+    def to_2d(self, index, length_alingment=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         traces = self.traces[pos]
@@ -108,11 +108,19 @@ class SeismicBatch(Batch):
             return
         try:
             traces_2d = np.vstack(traces)
-        except ValueError:
-            shape = (len(traces), max([len(t) for t in traces]))
+        except ValueError as e:
+            if length_alingment is None:
+                raise ValueError(str(e) + '\nTry to set length_alingment to \'max\' or \'min\'')
+            elif length_alingment == 'min':
+                nsamples = min([len(t) for t in traces])
+            elif length_alingment == 'max':
+                nsamples = max([len(t) for t in traces])
+            else:
+                raise NotImplementedError('Unknown length_alingment')
+            shape = (len(traces), nsamples)
             traces_2d = np.zeros(shape)
             for i, arr in enumerate(traces):
-                traces_2d[i, :len(arr)] = arr
+                traces_2d[i, :len(arr)] = arr[:nsamples]
         self.traces[pos] = traces_2d
 
     @action
