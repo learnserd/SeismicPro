@@ -260,6 +260,15 @@ class FieldIndex(DatasetIndex):
         """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
 
+    def convert_to_stacked(self):
+        """Docstring."""
+        try:
+            len(self.meta['bin_size'])
+        except TypeError:
+            return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
+        return DatasetIndex([0])
+            
+
     def show_heatmap(self):
         """Docstring."""
         bin_size = self.meta['bin_size']

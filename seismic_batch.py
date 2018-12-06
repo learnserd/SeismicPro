@@ -3,6 +3,7 @@ import glob
 import os
 from textwrap import dedent
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import segyio
 import pywt
@@ -57,6 +58,7 @@ def add_actions(actions_dict, template_docstring):
 @add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
     """Docstring."""
+    components = 'traces', 'annotation', 'meta'
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
         if preloaded is None:
@@ -86,16 +88,23 @@ class SeismicBatch(Batch):
         getattr(self, dst)[i] = dst_data
 
     @action
+    def apply_transform(self, func, *args, src="traces", dst="traces", **kwargs):
+        super().apply_transform(func, *args, src=src, dst=dst, **kwargs)
+        dst_data = getattr(self, dst)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
     @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
-    def trace_shift(self, index, *args, src="traces", shift_src=None, dst="traces", **kwargs):
+    def shift_traces(self, index, *args, src="traces", shift_src=None, dst="traces", **kwargs):
         """TBD.
         """
         i = self.get_pos(None, src, index)
         traces = getattr(self, src)[i]
         if isinstance(shift_src, str):
             shifts = getattr(self, shift_src)[i]
-        
-        dst_data = np.array([traces[k][shifts[k]:] for k in range(len(traces))])
+ 
+        dst_data = np.array([traces[k][max(0, shifts[k]):] for k in range(len(traces))])
         getattr(self, dst)[i] = dst_data
 
     @action
@@ -124,15 +133,25 @@ class SeismicBatch(Batch):
         self.traces[pos] = traces_2d
 
     @action
-    def load(self, src=None, path=None, fmt=None, *args, **kwargs):
-        """Docstring."""
-        if isinstance(self.index, FilesIndex) or (src is not None):
+    def load(self, src=None, path=None, fmt=None, components=None, *args, **kwargs):
+        """Docstring."""       
+        if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
             return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
-        elif isinstance(self.index, FieldIndex):
+        if isinstance(self.index, FieldIndex):
             return self._load_from_traces(path=path, fmt=fmt, *args, **kwargs)
-        else:
-            raise NotImplementedError("Unknown index type.")
+        if isinstance(src, pd.DataFrame):
+            return self._load_from_df(src, *args, **kwargs)
+        return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
 
+    @action
+    def _load_from_df(self, src, *args, **kwargs):
+        """Docstring."""
+        df = src.loc[self.indices]
+        for component in df.columns:
+            if hasattr(self, component):
+                setattr(self, component, df[component].values)
+        return self
+        
     def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
                           get_file_by_index=None, skip_channels=0):
         """Docstring."""
@@ -176,7 +195,7 @@ class SeismicBatch(Batch):
 
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0):
+    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0, sorting=None):
         """Docstring."""
         if src is not None:
             path = src[index]
@@ -217,6 +236,13 @@ class SeismicBatch(Batch):
         order = np.argsort(idf[sort_by].values)
         self.traces[pos] = self.traces[pos][order]
         self.meta[pos]['sorting'] = sort_by
+
+    @action
+    @inbatch_parallel(init="indices", target="threads")
+    def summarize(self, index, axis=0, keepdims=True):
+        """Docstring."""
+        pos = self.get_pos(None, "indices", index)
+        self.traces[pos] = np.mean(self.traces[pos], axis=axis, keepdims=keepdims)
 
     @action
     @inbatch_parallel(init="indices", target="threads")
