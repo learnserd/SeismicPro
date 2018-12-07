@@ -5,8 +5,8 @@ from textwrap import dedent
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import segyio
 import pywt
+import segyio
 
 from dataset import (action, inbatch_parallel, Batch,
                      FilesIndex, DatasetIndex,
@@ -89,6 +89,7 @@ class SeismicBatch(Batch):
 
     @action
     def apply_transform(self, func, *args, src="traces", dst="traces", **kwargs):
+        """Docstring."""
         super().apply_transform(func, *args, src=src, dst=dst, **kwargs)
         dst_data = getattr(self, dst)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])

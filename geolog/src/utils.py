@@ -5,7 +5,7 @@ import functools
 import numpy as np
 
 
-class IndexTracker(object):
+class IndexTracker:
     """Docstring."""
     def __init__(self, ax, im, scroll_step=1, slice_names=None,
                  pts=None, axes_names=None, **kwargs):

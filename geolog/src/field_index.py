@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression
 
 from dataset import DatasetIndex
 
-from batch_tools import show_1d_heatmap, show_2d_heatmap
+from .batch_tools import show_1d_heatmap, show_2d_heatmap
 
 
 def get_phi(dfr, dfs):
