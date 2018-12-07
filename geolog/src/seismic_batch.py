@@ -12,9 +12,9 @@ from dataset import (action, inbatch_parallel, Batch,
                      FilesIndex, DatasetIndex,
                      ImagesBatch, any_action_failed)
 
-from field_index import FieldIndex
-from utils import IndexTracker, partialmethod
-from batch_tools import nj_sample_crops, pts_to_indices
+from .field_index import FieldIndex
+from .utils import IndexTracker, partialmethod
+from .batch_tools import nj_sample_crops, pts_to_indices
 
 
 ACTIONS_DICT = {
@@ -96,14 +96,14 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
-    def shift_traces(self, index, *args, src="traces", shift_src=None, dst="traces", **kwargs):
+    def shift_traces(self, index, src="traces", shift_src=None, dst="traces"):
         """TBD.
         """
         i = self.get_pos(None, src, index)
         traces = getattr(self, src)[i]
         if isinstance(shift_src, str):
             shifts = getattr(self, shift_src)[i]
- 
+
         dst_data = np.array([traces[k][max(0, shifts[k]):] for k in range(len(traces))])
         getattr(self, dst)[i] = dst_data
 
@@ -117,9 +117,9 @@ class SeismicBatch(Batch):
             return
         try:
             traces_2d = np.vstack(traces)
-        except ValueError as e:
+        except ValueError as err:
             if length_alingment is None:
-                raise ValueError(str(e) + '\nTry to set length_alingment to \'max\' or \'min\'')
+                raise ValueError(str(err) + '\nTry to set length_alingment to \'max\' or \'min\'')
             elif length_alingment == 'min':
                 nsamples = min([len(t) for t in traces])
             elif length_alingment == 'max':
@@ -134,7 +134,7 @@ class SeismicBatch(Batch):
 
     @action
     def load(self, src=None, path=None, fmt=None, components=None, *args, **kwargs):
-        """Docstring."""       
+        """Docstring."""
         if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
             return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
         if isinstance(self.index, FieldIndex):
@@ -144,14 +144,14 @@ class SeismicBatch(Batch):
         return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
 
     @action
-    def _load_from_df(self, src, *args, **kwargs):
+    def _load_from_df(self, src):
         """Docstring."""
         df = src.loc[self.indices]
         for component in df.columns:
             if hasattr(self, component):
                 setattr(self, component, df[component].values)
         return self
-        
+
     def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
                           get_file_by_index=None, skip_channels=0):
         """Docstring."""
@@ -159,7 +159,7 @@ class SeismicBatch(Batch):
         channels = []
         pos = []
 
-        idf = self.index._idf
+        idf = self.index._idf # pylint: disable=protected-access
         idf['_pos'] = np.arange(len(idf))
 
         for index, group in idf.groupby(['tape', 'xid']):
@@ -195,7 +195,7 @@ class SeismicBatch(Batch):
 
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0, sorting=None):
+    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0):
         """Docstring."""
         if src is not None:
             path = src[index]
@@ -205,21 +205,21 @@ class SeismicBatch(Batch):
             raise ValueError("Source is not specified")
         pos = self.get_pos(None, "indices", index)
         if fmt == "segy":
-            with segyio.open(path, strict=False) as sf:
-                if (sf.sorting is not None) and (channels is None):
-                    self.traces[pos] = segyio.tools.cube(sf)
+            with segyio.open(path, strict=False) as file:
+                if (file.sorting is not None) and (channels is None):
+                    self.traces[pos] = segyio.tools.cube(file)
                 else:
                     if channels is None:
-                        self.traces[pos] = sf.trace.raw[:][slice(skip_channels, None)]
+                        self.traces[pos] = file.trace.raw[:][slice(skip_channels, None)]
                     else:
-                        self.traces[pos] = sf.trace.raw[:][channels[index] - 1 + skip_channels]
-                self.meta[pos] = segyio.tools.metadata(sf).__dict__
+                        self.traces[pos] = file.trace.raw[:][channels[index] - 1 + skip_channels]
+                self.meta[pos] = segyio.tools.metadata(file).__dict__
         elif fmt == "pts":
             pdir = os.path.split(path)[0] + '/*.pts'
             files = glob.glob(pdir)
             self.annotation[pos] = []
-            for f in files:
-                self.annotation[pos].append(np.loadtxt(f))
+            for file in files:
+                self.annotation[pos].append(np.loadtxt(file))
             self.annotation[pos] = np.array(self.annotation[pos])
         else:
             raise NotImplementedError("Unknown file format.")
@@ -230,7 +230,7 @@ class SeismicBatch(Batch):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         if isinstance(self.index, FieldIndex):
-            idf = self.index._idf.loc[index]
+            idf = self.index._idf.loc[index] # pylint: disable=protected-access
         else:
             raise ValueError("Sorting is not supported for this Index class")
         order = np.argsort(idf[sort_by].values)
@@ -327,7 +327,7 @@ class SeismicBatch(Batch):
 
         return [crops, labels]
 
-    def slice_tracker(self, index, axis, scroll_step=1, show_pts=False, cmap=None):
+    def slice_tracker(self, index, axis, scroll_step=1, show_pts=False, **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         traces, pts, meta = self.traces[pos], self.annotation[pos], self.meta[pos]
@@ -343,8 +343,8 @@ class SeismicBatch(Batch):
             ipts = [pts_to_indices(arr[:, :3], meta)[:, order] for arr in pts]
         else:
             ipts = None
-        tracker = IndexTracker(ax, np.transpose(traces, order), cmap=cmap,
-                               scroll_step=scroll_step, pts=ipts, axes_names=axes_names)
+        tracker = IndexTracker(ax, np.transpose(traces, order), scroll_step=scroll_step,
+                               pts=ipts, axes_names=axes_names, **kwargs)
         return fig, tracker
 
     def show_slice(self, index, axis=-1, offset=0, show_pts=False, **kwargs):

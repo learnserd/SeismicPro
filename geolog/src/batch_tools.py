@@ -60,13 +60,12 @@ def show_1d_heatmap(idf, *args, **kwargs):
     bindf = bindf.sort_values(by='line')
 
     brange = np.max(bindf[['line_code', 'pos']].values, axis=0)
-    h = np.zeros(brange, dtype=int)
-    h[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
+    hist = np.zeros(brange, dtype=int)
+    hist[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
 
-    heatmap = plt.imshow(h, *args, **kwargs)
+    heatmap = plt.imshow(hist, *args, **kwargs)
     plt.colorbar(heatmap)
     plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
-    plt.xticks(np.arange(brange[1]), np.arange(brange[1]), fontsize=8)
     plt.xlabel("Bins")
     plt.ylabel("Line index")
     plt.axes().set_aspect('auto')
@@ -78,10 +77,10 @@ def show_2d_heatmap(idf, *args, **kwargs):
     bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
     brange = np.max(bins, axis=0)
 
-    h = np.zeros(brange, dtype=int)
-    h[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
+    hist = np.zeros(brange, dtype=int)
+    hist[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
 
-    heatmap = plt.imshow(h.T, origin='lower', *args, **kwargs)
+    heatmap = plt.imshow(hist.T, origin='lower', *args, **kwargs)
     plt.colorbar(heatmap)
     plt.xlabel('x-Bins')
     plt.ylabel('y-Bins')

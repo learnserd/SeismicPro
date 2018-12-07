@@ -51,38 +51,38 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
     """Docstring."""
     t = np.max(pts, axis=0).reshape((-1, 1))
     shift = np.zeros(pts.ndim)
-    sh = []
-    hh = []
+    states = []
+    states_std = []
     for _ in range(max_iters):
         s = bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
         bins = [np.arange(a, b + bin_size, bin_size) for a, b in zip(s + shift, t)]
         if pts.ndim == 2:
             h = np.histogram2d(*pts.T, bins=bins)[0]
             dif = np.diff(h, axis=0) / 2.
-            mx = np.vstack([np.max(h[i: i + 2], axis=0) for i in range(h.shape[0] - 1)])
-            ratio = dif[mx > 0] / mx[mx > 0]
-            xs = bin_size * np.mean(ratio)
+            vmax = np.vstack([np.max(h[i: i + 2], axis=0) for i in range(h.shape[0] - 1)])
+            ratio = dif[vmax > 0] / vmax[vmax > 0]
+            xshift = bin_size * np.mean(ratio)
             dif = np.diff(h, axis=1) / 2.
-            mx = np.vstack([np.max(h[:, i: i + 2], axis=1) for i in range(h.shape[1] - 1)]).T
-            ratio = dif[mx > 0] / mx[mx > 0]
-            ys = bin_size * np.mean(ratio)
-            move = np.array([xs, ys])
+            vmax = np.vstack([np.max(h[:, i: i + 2], axis=1) for i in range(h.shape[1] - 1)]).T
+            ratio = dif[vmax > 0] / vmax[vmax > 0]
+            yshift = bin_size * np.mean(ratio)
+            move = np.array([xshift, yshift])
         elif pts.ndim == 1:
             h = np.histogram(pts, bins=bins[0])[0]
             dif = np.diff(h) / 2.
-            mx = np.hstack([np.max(h[i: i + 2]) for i in range(len(h) - 1)])
-            ratio = dif[mx > 0] / mx[mx > 0]
-            xs = bin_size * np.mean(ratio)
-            move = np.array([xs])
+            vmax = np.hstack([np.max(h[i: i + 2]) for i in range(len(h) - 1)])
+            ratio = dif[vmax > 0] / vmax[vmax > 0]
+            xshift = bin_size * np.mean(ratio)
+            move = np.array([xshift])
         else:
             raise ValueError("pts should be ndim = 1 or 2.")
-        sh.append(shift.copy())
-        hh.append(np.std(h))
+        states.append(shift.copy())
+        states_std.append(np.std(h))
         if np.linalg.norm(move) < bin_size * eps:
             break
         shift += move
-    i = np.argmin(hh)
-    return sh[i] % bin_size
+    i = np.argmin(states_std)
+    return states[i] % bin_size
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -144,20 +144,20 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
             _phi = np.radians(phi[rline])
 
         pts = rot_2d(pts, -_phi)
-        px, y = pts[:, 0], np.mean(pts[:, 1])
+        ppx, y = pts[:, 0], np.mean(pts[:, 1])
 
         if origin is None:
-            shift = gradient_bins_shift(px, bin_size, iters)
-            s = shift + bin_size * ((np.min(px) - shift) // bin_size)
+            shift = gradient_bins_shift(ppx, bin_size, iters)
+            s = shift + bin_size * ((np.min(ppx) - shift) // bin_size)
             _origin = rot_2d(np.array([[s, y]]), _phi)[0]
         else:
             _origin = origin[rline]
             s = rot_2d(_origin.reshape((-1, 2)), -_phi)[0, 0]
 
-        t = np.max(px)
+        t = np.max(ppx)
         bins = np.arange(s, t + bin_size, bin_size)
 
-        index = np.digitize(px, bins)
+        index = np.digitize(ppx, bins)
 
         dfm.loc[dfm['rline'] == rline, 'x_index'] = index
         meta.update({rline: dict(origin=_origin, phi=np.rad2deg(_phi))})
@@ -267,7 +267,6 @@ class FieldIndex(DatasetIndex):
         except TypeError:
             return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
         return DatasetIndex([0])
-            
 
     def show_heatmap(self):
         """Docstring."""

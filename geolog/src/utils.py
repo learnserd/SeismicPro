@@ -7,17 +7,16 @@ import numpy as np
 
 class IndexTracker(object):
     """Docstring."""
-    def __init__(self, ax, X, scroll_step=1, slice_names=None,
-                 cmap=None, pts=None, axes_names=None):
+    def __init__(self, ax, im, scroll_step=1, slice_names=None,
+                 pts=None, axes_names=None, **kwargs):
         self.ax = ax
-        self.X = X
+        self.im = im
         self.step = scroll_step
-        self.slice_names = (np.arange(X.shape[-1], dtype="int")
+        self.slice_names = (np.arange(im.shape[-1], dtype="int")
                             if slice_names is None else slice_names)
-        self.cmap = ("gray" if cmap is None else cmap)
+        self.img_kwargs = kwargs
 
-        _, _, self.slices = X.shape
-        self.ind = self.slices//2
+        self.ind = im.shape[-1] // 2
         self.pts = pts
         self.axes_names = ["x", "y"] if axes_names is None else axes_names
 
@@ -27,21 +26,21 @@ class IndexTracker(object):
         """Docstring."""
         print("%s %s" % (event.button, event.step))
         if event.button == 'up':
-            self.ind = np.clip(self.ind + self.step, 0, self.slices - 1)
+            self.ind = np.clip(self.ind + self.step, 0, self.im.shape[-1] - 1)
         else:
-            self.ind = np.clip(self.ind - self.step, 0, self.slices - 1)
+            self.ind = np.clip(self.ind - self.step, 0, self.im.shape[-1] - 1)
         self.update()
 
     def update(self):
         """Docstring."""
         self.ax.clear()
-        self.ax.imshow(self.X[:, :, self.ind], cmap=self.cmap)
+        self.ax.imshow(self.im[:, :, self.ind], **self.img_kwargs)
         self.ax.set_title('slice %s' % self.slice_names[self.ind])
         self.ax.set_xlabel(self.axes_names[0])
         self.ax.set_ylabel(self.axes_names[1])
         self.ax.set_aspect('auto')
-        self.ax.set_xlim([0, self.X.shape[1]])
-        self.ax.set_ylim([self.X.shape[0], 0])
+        self.ax.set_xlim([0, self.im.shape[1]])
+        self.ax.set_ylim([self.im.shape[0], 0])
         if self.pts is not None:
             for arr in self.pts:
                 arr = arr[arr[:, -1] == self.ind]
