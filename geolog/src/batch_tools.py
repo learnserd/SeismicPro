@@ -66,7 +66,7 @@ def show_1d_heatmap(idf, *args, **kwargs):
     heatmap = plt.imshow(hist, *args, **kwargs)
     plt.colorbar(heatmap)
     plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
-    plt.xlabel("Bins")
+    plt.xlabel("Bins index")
     plt.ylabel("Line index")
     plt.axes().set_aspect('auto')
     plt.show()
