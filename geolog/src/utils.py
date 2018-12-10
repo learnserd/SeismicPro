@@ -3,6 +3,7 @@ import os
 import glob
 import functools
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class IndexTracker:
@@ -47,6 +48,32 @@ class IndexTracker:
                 if len(arr) == 0:
                     continue
                 self.ax.scatter(arr[:, 1], arr[:, 0], alpha=0.005)
+
+
+class Layouts:
+    """Docstring."""
+    def __init__(self):
+        """Docstring."""
+        self.layers = []
+
+    def add(self, x, y, *args, **kwargs):
+        """Docstring."""
+        self.layers.append(dict(x=x, y=y, args=args, kwargs=kwargs))
+        return self
+
+    def show(self, labels=None, aspect='equal'):
+        """Docstring."""
+        for layer in self.layers:
+            if labels is not None:
+                if 'label' not in layer['kwargs']:
+                    continue
+                if layer['kwargs']['label'] not in labels:
+                    continue
+            plt.scatter(layer['x'], layer['y'], *layer['args'], **layer['kwargs'])
+        if np.any(['label' in layer['kwargs'] for layer in self.layers]):
+            plt.legend()
+        plt.axes().set_aspect(aspect)
+        plt.show()
 
 
 def get_file_by_index(path, index):
