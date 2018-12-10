@@ -240,10 +240,16 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def summarize(self, index, axis=0, keepdims=True):
+    def summarize(self, index, axis=0, keepdims=True, max_r=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        self.traces[pos] = np.mean(self.traces[pos], axis=axis, keepdims=keepdims)
+        if max_r is not None:
+            sort_by = self.meta[pos]['sorting']
+            r2 = np.sort(self.index._idf.loc[index, sort_by].values)
+            mask = np.where(r2 < max_r ** 2)[0]
+        else:
+            mask = slice(0, None, None)
+        self.traces[pos] = np.mean(self.traces[pos][mask], axis=axis, keepdims=keepdims)
 
     @action
     @inbatch_parallel(init="indices", target="threads")

@@ -13,7 +13,7 @@ def make_hmm_data(batch, model, components):
     x = np.hstack([np.concatenate([np.concatenate(np.atleast_3d(arr)) for arr in comp])
                    for comp in src])
     lengths = np.concatenate([[len(arr[0])] * len(arr) for arr in src[0]])
-    return {"X": x, "lengths": lengths, "shapes": np.array([len(arr) for arr in src[0]])}
+    return {"x": x, "lengths": lengths, "shapes": np.array([len(arr) for arr in src[0]])}
 
 
 class HMModel(BaseModel):
@@ -71,7 +71,7 @@ class HMModel(BaseModel):
         with open(path, "rb") as file:
             self.estimator = dill.load(file)
 
-    def train(self, x, lengths=None):
+    def train(self, x, lengths=None, *args, **kwargs):
         """ Train the model using data provided.
         Parameters
         ----------
@@ -86,10 +86,11 @@ class HMModel(BaseModel):
         -----
         For more details and other parameters look at the documentation for the estimator used.
         """
+        _ = args, kwargs
         self.estimator.fit(x, lengths)
         return list(self.estimator.monitor_.history)
 
-    def predict(self, x, lengths=None, shapes=None):
+    def predict(self, x, lengths=None, shapes=None, *args, **kwargs):
         """ Make prediction with the data provided.
         Parameters
         ----------
@@ -108,6 +109,7 @@ class HMModel(BaseModel):
         -----
         For more details and other parameters look at the documentation for the estimator used.
         """
+        _ = args, kwargs
         preds = self.estimator.predict(x, lengths)
         if lengths is not None:
             output = np.array(np.split(preds, np.cumsum(lengths)[:-1]) + [None])[:-1]

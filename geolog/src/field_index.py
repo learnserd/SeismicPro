@@ -262,11 +262,11 @@ class FieldIndex(DatasetIndex):
 
     def convert_to_stacked(self):
         """Docstring."""
-        try:
-            len(self.meta['bin_size'])
-        except TypeError:
+        bin_size = self.meta['bin_size']
+        if isinstance(bin_size, (list, tuple, np.ndarray)):
+            return DatasetIndex([0])
+        else:
             return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
-        return DatasetIndex([0])
 
     def show_heatmap(self):
         """Docstring."""
