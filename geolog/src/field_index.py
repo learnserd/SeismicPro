@@ -240,16 +240,19 @@ class FieldIndex(DatasetIndex):
             return self.build_from_index(index, idf)
         if bin_size is None:
             df = make_shot_index(dfr, dfs, dfx)
+            indices = df.index.levels[0]
         elif isinstance(bin_size, (list, tuple, np.ndarray)):
             df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
             self.meta = meta
+            indices = sorted(df.index.levels[0], key = lambda x: int(x.replace('/', '')))
         else:
             df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
             self.meta = meta
+            indices = sorted(df.index.levels[0], key = lambda x: (x.split('/')[0], int(x.split('/')[1])))
         self._idf = df
         if bin_size is not None:
             self.meta.update(dict(bin_size=bin_size))
-        return df.index.levels[0]
+        return np.array(indices)
 
     def build_from_index(self, index, idf):
         """ Build index from another index for indices given. """
