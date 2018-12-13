@@ -5,6 +5,7 @@ from textwrap import dedent
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy import signal
 import pywt
 import segyio
 
@@ -20,6 +21,8 @@ from .batch_tools import nj_sample_crops, pts_to_indices
 ACTIONS_DICT = {
     "clip": (np.clip, "numpy.clip", "clip values"),
     "gradient": (np.gradient, "numpy.gradient", "gradient"),
+    "fft2": (np.fft.fft2, "numpy.fft.fft2", "a Discrete 2D Fourier Transform"),
+    "ifft2": (np.fft.ifft2, "numpy.fft.ifft2", "an inverse Discrete 2D Fourier Transform"),
     "fft": (np.fft.fft, "numpy.fft.fft", "a Discrete Fourier Transform"),
     "ifft": (np.fft.ifft, "numpy.fft.ifft", "an inverse Discrete Fourier Transform"),
     "rfft": (np.fft.rfft, "numpy.fft.rfft", "a real-input Discrete Fourier Transform"),
@@ -107,6 +110,22 @@ class SeismicBatch(Batch):
 
         dst_data = np.array([traces[k][max(0, shifts[k]):] for k in range(len(traces))])
         getattr(self, dst)[i] = dst_data
+
+    @action
+    @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
+    def band_pass_filter(self, index, lowcut=None, highcut=None, fs=1, order=5, src="traces", dst="traces"):
+        """TBD.
+        """
+        i = self.get_pos(None, src, index)
+        traces = getattr(self, src)[i]
+        nyq = 0.5 * fs
+        if lowcut is None:
+            b, a = signal.butter(order, highcut / nyq, btype='high')
+        elif highcut is None:
+            b, a = signal.butter(order, lowcut / nyq, btype='low')
+        else:
+            b, a = signal.butter(order, [lowcut / nyq, highcut / nyq], btype='band') 
+        getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
     @inbatch_parallel(init="indices", target="threads")
