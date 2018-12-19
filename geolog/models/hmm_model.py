@@ -2,7 +2,7 @@
 import numpy as np
 import dill
 
-from dataset.dataset.models.base import BaseModel
+from batchflow.batchflow.models.base import BaseModel
 
 def make_hmm_data(batch, model, components):
     """Docstring."""

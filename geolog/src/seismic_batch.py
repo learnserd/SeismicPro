@@ -9,9 +9,9 @@ from scipy import signal
 import pywt
 import segyio
 
-from dataset import (action, inbatch_parallel, Batch,
-                     FilesIndex, DatasetIndex,
-                     ImagesBatch, any_action_failed)
+from batchflow import (action, inbatch_parallel, Batch,
+                       FilesIndex, DatasetIndex,
+                       ImagesBatch, any_action_failed)
 
 from .field_index import FieldIndex
 from .utils import IndexTracker, partialmethod
@@ -373,7 +373,7 @@ class SeismicBatch(Batch):
                                pts=ipts, axes_names=axes_names, **kwargs)
         return fig, tracker
 
-    def show_slice(self, index, axis=-1, offset=0, show_pts=False, **kwargs):
+    def show_slice(self, index, axis=-1, offset=0, show_pts=False, save_to=None, dpi=None, **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         traces, pts, meta = np.atleast_3d(self.traces[pos]), self.annotation[pos], self.meta[pos]
@@ -401,4 +401,6 @@ class SeismicBatch(Batch):
         plt.axis('auto')
         plt.xlim([0, traces.shape[ax[0]]])
         plt.ylim([traces.shape[ax[1]], 0])
+        if save_to is not None:
+            plt.savefig(save_to, dpi=dpi)
         plt.show()

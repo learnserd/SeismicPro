@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-from dataset import DatasetIndex
+from batchflow import DatasetIndex
 
 from .batch_tools import show_1d_heatmap, show_2d_heatmap
 
@@ -97,7 +97,7 @@ def make_shot_index(dfr, dfs, dfx):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
-    dfx = pd.DataFrame(dfx.loc[dfx.index.repeat(n_reps)])
+    dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -119,7 +119,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
-    dfx = pd.DataFrame(dfx.loc[dfx.index.repeat(n_reps)])
+    dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -183,7 +183,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
-    dfx = pd.DataFrame(dfx.loc[dfx.index.repeat(n_reps)])
+    dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -271,10 +271,10 @@ class FieldIndex(DatasetIndex):
         else:
             return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
 
-    def show_heatmap(self):
+    def show_heatmap(self, save_to=None, dpi=300):
         """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
-            show_2d_heatmap(self._idf)
+            show_2d_heatmap(self._idf, save_to=save_to, dpi=dpi)
         else:
-            show_1d_heatmap(self._idf)
+            show_1d_heatmap(self._idf, save_to=save_to, dpi=dpi)

@@ -48,7 +48,7 @@ def show_cube(traces, clip_value, strides=10):
     ax.set_zlabel("samples")
     plt.show()
 
-def show_1d_heatmap(idf, *args, **kwargs):
+def show_1d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([i.split('/') for i in bin_counts.index])
@@ -69,9 +69,11 @@ def show_1d_heatmap(idf, *args, **kwargs):
     plt.xlabel("Bins index")
     plt.ylabel("Line index")
     plt.axes().set_aspect('auto')
+    if save_to is not None:
+        plt.savefig(save_to, dpi=dpi)
     plt.show()
 
-def show_2d_heatmap(idf, *args, **kwargs):
+def show_2d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
@@ -84,6 +86,8 @@ def show_2d_heatmap(idf, *args, **kwargs):
     plt.colorbar(heatmap)
     plt.xlabel('x-Bins')
     plt.ylabel('y-Bins')
+    if save_to is not None:
+        plt.savefig(save_to, dpi=dpi)
     plt.show()
 
 @njit(nogil=True)
