@@ -375,7 +375,7 @@ class SeismicBatch(Batch):
                                pts=ipts, axes_names=axes_names, **kwargs)
         return fig, tracker
 
-    def show_slice(self, index, axis=-1, offset=0, show_pts=False, save_to=None, dpi=None, **kwargs):
+    def show_slice(self, index, axis=-1, offset=0, show_pts=False, figsize=None, save_to=None, dpi=None, **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         traces, pts, meta = np.atleast_3d(self.traces[pos]), self.annotation[pos], self.meta[pos]
@@ -389,6 +389,9 @@ class SeismicBatch(Batch):
             axes_names = np.delete(["x-lines", "i-lines", "samples"], axis)
         else:
             axes_names = np.delete(["x", "y", "z"], axis)
+
+        if figsize is not None:
+            plt.figure(figsize=figsize)
 
         plt.imshow(traces[ix].T, **kwargs)
 
