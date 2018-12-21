@@ -48,7 +48,7 @@ def show_cube(traces, clip_value, strides=10):
     ax.set_zlabel("samples")
     plt.show()
 
-def show_1d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
+def show_1d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([i.split('/') for i in bin_counts.index])
@@ -63,6 +63,9 @@ def show_1d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
     hist = np.zeros(brange, dtype=int)
     hist[bindf['line_code'].values - 1, bindf['pos'].values - 1] = bindf['counts'].values
 
+    if figsize is not None:
+        plt.figure(figsize=figsize)
+
     heatmap = plt.imshow(hist, *args, **kwargs)
     plt.colorbar(heatmap)
     plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
@@ -73,7 +76,7 @@ def show_1d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
         plt.savefig(save_to, dpi=dpi)
     plt.show()
 
-def show_2d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
+def show_2d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     """Docstring."""
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
@@ -81,6 +84,9 @@ def show_2d_heatmap(idf, *args, save_to=None, dpi=300, **kwargs):
 
     hist = np.zeros(brange, dtype=int)
     hist[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
+    
+    if figsize is not None:
+        plt.figure(figsize=figsize)
 
     heatmap = plt.imshow(hist.T, origin='lower', *args, **kwargs)
     plt.colorbar(heatmap)

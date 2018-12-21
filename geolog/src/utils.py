@@ -61,8 +61,10 @@ class Layouts:
         self.layers.append(dict(x=x, y=y, args=args, kwargs=kwargs))
         return self
 
-    def show(self, labels=None, aspect='equal'):
+    def show(self, labels=None, aspect='equal', figsize=None):
         """Docstring."""
+        if figsize is not None:
+            plt.figure(figsize=figsize)
         for layer in self.layers:
             if labels is not None:
                 if 'label' not in layer['kwargs']:

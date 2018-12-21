@@ -81,8 +81,10 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
         if np.linalg.norm(move) < bin_size * eps:
             break
         shift += move
-    i = np.argmin(states_std)
-    return states[i] % bin_size
+    if states_std:
+        i = np.argmin(states_std)
+        return states[i] % bin_size
+    return shift 
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -271,10 +273,10 @@ class FieldIndex(DatasetIndex):
         else:
             return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
 
-    def show_heatmap(self, save_to=None, dpi=300):
+    def show_heatmap(self, figsize=None, save_to=None, dpi=300):
         """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
-            show_2d_heatmap(self._idf, save_to=save_to, dpi=dpi)
+            show_2d_heatmap(self._idf, figsize=figsize, save_to=save_to, dpi=dpi)
         else:
-            show_1d_heatmap(self._idf, save_to=save_to, dpi=dpi)
+            show_1d_heatmap(self._idf, figsize=figsize, save_to=save_to, dpi=dpi)

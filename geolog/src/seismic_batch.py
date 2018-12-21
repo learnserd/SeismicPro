@@ -164,11 +164,13 @@ class SeismicBatch(Batch):
         return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
 
     @action
-    def _load_from_df(self, src):
+    def _load_from_df(self, src, force=False):
         """Docstring."""
         df = src.loc[self.indices]
         for component in df.columns:
-            if hasattr(self, component):
+            if force:
+                setattr(self, component, df[component].values)
+            elif hasattr(self, component) :
                 setattr(self, component, df[component].values)
         return self
 
