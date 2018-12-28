@@ -161,6 +161,8 @@ class SeismicBatch(Batch):
             return self._load_from_traces(path=path, fmt=fmt, *args, **kwargs)
         if isinstance(src, pd.DataFrame):
             return self._load_from_df(src, *args, **kwargs)
+        if path is not None:
+            return self._load_from_one_path(path, fmt=fmt, components=components, *args, **kwargs)
         return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
 
     @action
@@ -173,6 +175,16 @@ class SeismicBatch(Batch):
             elif hasattr(self, component) :
                 setattr(self, component, df[component].values)
         return self
+
+    def _load_from_one_path(self, path, fmt, components='traces', skip_channels=0):
+        """Docstring."""
+        if fmt == "segy":
+            with segyio.open(path, strict=False) as file:
+                traces = np.array([file.trace[i] for i in self.indices - 1 + skip_channels] + [None])[:-1]
+            setattr(self, components, traces)
+            return self
+        else:
+            raise NotImplementedError("Unknown file format.")
 
     def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
                           get_file_by_index=None, skip_channels=0):
