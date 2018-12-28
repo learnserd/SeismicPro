@@ -232,9 +232,9 @@ class SeismicBatch(Batch):
                     self.traces[pos] = segyio.tools.cube(file)
                 else:
                     if channels is None:
-                        self.traces[pos] = file.trace.raw[:][slice(skip_channels, None)]
+                        self.traces[pos] = file.trace.raw[skip_channels:]
                     else:
-                        self.traces[pos] = file.trace.raw[:][channels[index] - 1 + skip_channels]
+                        self.traces[pos] = np.array([file.trace[i] for i in channels[index] - 1 + skip_channels])
                 self.meta[pos] = segyio.tools.metadata(file).__dict__
         elif fmt == "pts":
             pdir = os.path.split(path)[0] + '/*.pts'
