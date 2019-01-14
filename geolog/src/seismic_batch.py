@@ -153,6 +153,38 @@ class SeismicBatch(Batch):
         self.traces[pos] = traces_2d
 
     @action
+    def stack_traces(self, component='traces'):
+        """Docstring."""
+        res = type(self)(DatasetIndex(1))
+        data = getattr(self, component)
+        res.traces[0] = np.vstack(data)
+        res.meta[0] = dict(sorting=None)
+        return res
+
+    @action
+    def dump(self, path, fmt, component='traces', **kwargs):
+        """Docstring."""
+        if fmt in ['sgy', 'segy']:
+            self._dump_segy(path, component, **kwargs)
+        else:
+            raise NotImplementedError('Unknown file format.')
+
+    @inbatch_parallel(init="indices", target="threads")
+    def _dump_segy(self, index, path, component, **kwargs):
+        data = getattr(self, component)[index]
+        path = os.path.join(path, str(index) + '.sgy')
+        if data.ndim == 1:
+            segyio.tools.from_array(path, data=data, **kwargs)
+        elif data.ndim == 2:
+            segyio.tools.from_array2D(path, data=data, **kwargs)
+        elif data.ndim == 3:
+            segyio.tools.from_array3D(path, data=data, **kwargs)
+        elif data.ndim == 4:
+            segyio.tools.from_array4D(path, data=data, **kwargs)
+        else:
+            raise ValueError('Invalid data ndim.')       
+
+    @action
     def load(self, src=None, path=None, fmt=None, components=None, *args, **kwargs):
         """Docstring."""
         if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
@@ -180,7 +212,8 @@ class SeismicBatch(Batch):
         """Docstring."""
         if fmt == "segy":
             with segyio.open(path, strict=False) as file:
-                traces = np.array([file.trace[i] for i in self.indices - 1 + skip_channels] + [None])[:-1]
+                traces = np.array([np.atleast_2d(file.trace[i])
+                                   for i in self.indices - 1 + skip_channels] + [None])[:-1]
             setattr(self, components, traces)
             return self
         else:
