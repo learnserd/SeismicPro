@@ -12,6 +12,8 @@
 
 
 ## Литература:
+* [Minimum weighted norm interpolation of seismic records](https://pdfs.semanticscholar.org/a742/67142fcd14c4c8d19992bd304a80e064d62c.pdf)
+* [5D seismic data completion and denoising using a novel class of tensor decompositions](https://dspace.mit.edu/openaccess-disseminate/1721.1/98498)
 * [Построение сейсмических изображений](http://lserv.deg.gubkin.ru/file.php?file=../../1/dfwikidata/Voskresenskij.JU.N.Postroenie.sejsmicheskih.izobrazhenij.%28M,.RGUNG%29%282006%29%28T%29_GsPs_.pdf)
 * [Явление дифракции](https://mospolytech.ru/storage/43ec517d68b6edd3015b3edc9a11367b/files/LRNo93.pdf)
 * [Seismic facies recognition based on prestack data using deep convolutional autoencoder](https://arxiv.org/abs/1704.02446)

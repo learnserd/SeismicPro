@@ -99,7 +99,12 @@ def make_shot_index(dfr, dfs, dfx):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
+
+    dtypes = dfx.dtypes.values
     dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
+    for i, c in enumerate(dfx.columns):
+        dfx[c] = dfx[c].astype(dtypes[i])
+
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -121,7 +126,12 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
+
+    dtypes = dfx.dtypes.values
     dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
+    for i, c in enumerate(dfx.columns):
+        dfx[c] = dfx[c].astype(dtypes[i])
+
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -129,6 +139,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
     dfm['x_m'] = (dfm['x_s'] + dfm['x_r']) / 2.
     dfm['y_m'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     dfm['x_index'] = None
     meta = {}
@@ -167,7 +178,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     bin_indices = (dfm['rline'].astype(str) + '/' + dfm['x_index'].astype(str)).values
     dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
-    dfm['r2'] = (dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
 
     dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver', 'x_index'], axis=1)
@@ -185,7 +196,12 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
+
+    dtypes = dfx.dtypes.values
     dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
+    for i, c in enumerate(dfx.columns):
+        dfx[c] = dfx[c].astype(dtypes[i])
+
     dfx['rid'] = rids
     dfx['channel'] = channels
     dfm = (dfx
@@ -193,6 +209,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
     dfm['x_m'] = (dfm['x_s'] + dfm['x_r']) / 2.
     dfm['y_m'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     if phi is None:
         phi = get_phi(dfr, dfs)
@@ -219,7 +236,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     bin_indices = np.array([ix + '/' + iy for ix, iy in zip(x_index.astype(str), y_index.astype(str))])
     dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))])
 
-    dfm['r2'] = (dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
 
     dfm = dfm.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'], axis=1)
 

@@ -153,11 +153,12 @@ class SeismicBatch(Batch):
         self.traces[pos] = traces_2d
 
     @action
-    def stack_traces(self, component='traces'):
+    def stack(self, components):
         """Docstring."""
         res = type(self)(DatasetIndex(1))
-        data = getattr(self, component)
-        res.traces[0] = np.vstack(data)
+        for component in components:
+            data = getattr(self, component)
+            setattr(res, component, np.array([np.vstack(data)]))
         res.meta[0] = dict(sorting=None)
         return res
 
@@ -194,7 +195,7 @@ class SeismicBatch(Batch):
         if isinstance(src, pd.DataFrame):
             return self._load_from_df(src, *args, **kwargs)
         if path is not None:
-            return self._load_from_one_path(path, fmt=fmt, components=components, *args, **kwargs)
+            return self._load_from_one_path(path, fmt=fmt, component=components, *args, **kwargs)
         return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
 
     @action
@@ -208,13 +209,13 @@ class SeismicBatch(Batch):
                 setattr(self, component, df[component].values)
         return self
 
-    def _load_from_one_path(self, path, fmt, components='traces', skip_channels=0):
+    def _load_from_one_path(self, path, fmt, component='traces', skip_channels=0):
         """Docstring."""
         if fmt == "segy":
             with segyio.open(path, strict=False) as file:
                 traces = np.array([np.atleast_2d(file.trace[i])
                                    for i in self.indices - 1 + skip_channels] + [None])[:-1]
-            setattr(self, components, traces)
+            setattr(self, component, traces)
             return self
         else:
             raise NotImplementedError("Unknown file format.")
@@ -420,10 +421,12 @@ class SeismicBatch(Batch):
                                pts=ipts, axes_names=axes_names, **kwargs)
         return fig, tracker
 
-    def show_slice(self, index, axis=-1, offset=0, show_pts=False, figsize=None, save_to=None, dpi=None, **kwargs):
+    def show_slice(self, index, axis=-1, offset=0, show_pts=False,
+                   figsize=None, save_to=None, dpi=None, component='traces', **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        traces, pts, meta = np.atleast_3d(self.traces[pos]), self.annotation[pos], self.meta[pos]
+        traces = np.atleast_3d(getattr(self, component)[pos])
+        pts, meta = self.annotation[pos], self.meta[pos]
         ix = [slice(None)] * traces.ndim
         ix[axis] = offset
         ax = np.delete(np.arange(3), axis)

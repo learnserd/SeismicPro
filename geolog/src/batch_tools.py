@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from numba import njit
 from sklearn.preprocessing import MinMaxScaler
 
+
 def get_pts(batch, grid, i, batch_size):
     """Docstring."""
     _ = batch
