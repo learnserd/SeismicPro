@@ -13,7 +13,7 @@ from batchflow import (action, inbatch_parallel, Batch,
                        FilesIndex, DatasetIndex,
                        ImagesBatch, any_action_failed)
 
-from .field_index import FieldIndex
+from .field_index import SegyIndex, SPSIndex, DataFrameIndex
 from .utils import IndexTracker, partialmethod
 from .batch_tools import nj_sample_crops, pts_to_indices
 
@@ -124,7 +124,7 @@ class SeismicBatch(Batch):
         elif highcut is None:
             b, a = signal.butter(order, lowcut / nyq, btype='low')
         else:
-            b, a = signal.butter(order, [lowcut / nyq, highcut / nyq], btype='band') 
+            b, a = signal.butter(order, [lowcut / nyq, highcut / nyq], btype='band')
         getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
@@ -183,15 +183,17 @@ class SeismicBatch(Batch):
         elif data.ndim == 4:
             segyio.tools.from_array4D(path, data=data, **kwargs)
         else:
-            raise ValueError('Invalid data ndim.')       
+            raise ValueError('Invalid data ndim.')
 
     @action
     def load(self, src=None, path=None, fmt=None, components=None, *args, **kwargs):
         """Docstring."""
         if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
             return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
-        if isinstance(self.index, FieldIndex):
-            return self._load_from_traces(path=path, fmt=fmt, *args, **kwargs)
+        if isinstance(self.index, SPSIndex):
+            return self._load_from_sps_index(path=path, fmt=fmt, *args, **kwargs)
+        if isinstance(self.index, SegyIndex):
+            return self._load_from_segy_index(path=path, fmt=fmt, *args, **kwargs)
         if isinstance(src, pd.DataFrame):
             return self._load_from_df(src, *args, **kwargs)
         if path is not None:
@@ -205,7 +207,7 @@ class SeismicBatch(Batch):
         for component in df.columns:
             if force:
                 setattr(self, component, df[component].values)
-            elif hasattr(self, component) :
+            elif hasattr(self, component):
                 setattr(self, component, df[component].values)
         return self
 
@@ -214,14 +216,14 @@ class SeismicBatch(Batch):
         if fmt == "segy":
             with segyio.open(path, strict=False) as file:
                 traces = np.array([np.atleast_2d(file.trace[i])
-                                   for i in self.indices - 1 + skip_channels] + [None])[:-1]
+                                   for i in self.indices + skip_channels] + [None])[:-1]
             setattr(self, component, traces)
             return self
         else:
             raise NotImplementedError("Unknown file format.")
 
-    def _load_from_traces(self, path=None, fmt=None, sort_by='r2',
-                          get_file_by_index=None, skip_channels=0):
+    def _load_from_sps_index(self, path=None, fmt=None, sort_by='channel',
+                             get_file_by_index=None, skip_channels=0):
         """Docstring."""
         src = []
         channels = []
@@ -261,6 +263,28 @@ class SeismicBatch(Batch):
 
         return self
 
+    def _load_from_segy_index(self, path=None, fmt=None, sort_by='channel', skip_channels=0):
+        """Docstring."""
+        idf = self.index._idf # pylint: disable=protected-access
+        seqno = idf['seqno'].values
+
+        idf['_pos'] = np.arange(len(idf))
+
+        batch = (type(self)(DatasetIndex(seqno))
+                 .load(path=path, fmt=fmt, components='traces', skip_channels=skip_channels))
+
+        idf['_trace'] = batch.traces
+
+        for index, group in idf.groupby(level=0):
+            ipos = self.get_pos(None, "indices", index)
+            group = group.dropna(axis=0).sort_values(by=sort_by)
+            self.traces[ipos] = group['_trace'].values
+            self.meta[ipos] = dict(sorting=sort_by)
+
+        idf.drop(labels=['_pos', '_trace'], axis=1, inplace=True)
+
+        return self
+
 
     @inbatch_parallel(init="indices", target="threads")
     def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0):
@@ -280,7 +304,7 @@ class SeismicBatch(Batch):
                     if channels is None:
                         self.traces[pos] = file.trace.raw[skip_channels:]
                     else:
-                        self.traces[pos] = np.array([file.trace[i] for i in channels[index] - 1 + skip_channels])
+                        self.traces[pos] = np.array([file.trace[i] for i in channels[index] + skip_channels])
                 self.meta[pos] = segyio.tools.metadata(file).__dict__
         elif fmt == "pts":
             pdir = os.path.split(path)[0] + '/*.pts'
@@ -297,7 +321,7 @@ class SeismicBatch(Batch):
     def sort_traces(self, index, sort_by):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        if isinstance(self.index, FieldIndex):
+        if isinstance(self.index, DataFrameIndex):
             idf = self.index._idf.loc[index] # pylint: disable=protected-access
         else:
             raise ValueError("Sorting is not supported for this Index class")
@@ -307,13 +331,13 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def summarize(self, index, axis=0, keepdims=True, max_r=None):
+    def summarize(self, index, axis=0, keepdims=True, max_offset=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        if max_r is not None:
+        if max_offset is not None:
             sort_by = self.meta[pos]['sorting']
-            r2 = np.sort(self.index._idf.loc[index, sort_by].values)
-            mask = np.where(r2 < max_r ** 2)[0]
+            offset = np.sort(self.index._idf.loc[index, sort_by].values) # pylint: disable=protected-access
+            mask = np.where(offset < max_offset ** 2)[0]
         else:
             mask = slice(0, None, None)
         self.traces[pos] = np.mean(self.traces[pos][mask], axis=axis, keepdims=keepdims)

@@ -85,7 +85,7 @@ def show_2d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
 
     hist = np.zeros(brange, dtype=int)
     hist[bins[:, 0] - 1, bins[:, 1] - 1] = bin_counts.values
-    
+
     if figsize is not None:
         plt.figure(figsize=figsize)
 

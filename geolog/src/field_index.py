@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+import segyio
 
 from batchflow import DatasetIndex
 
@@ -84,7 +85,7 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
     if states_std:
         i = np.argmin(states_std)
         return states[i] % bin_size
-    return shift 
+    return shift
 
 def rot_2d(arr, phi):
     """Docstring."""
@@ -110,7 +111,7 @@ def make_shot_index(dfr, dfs, dfx):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['r2'] = (dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
     shot_indices = (dfm['sline'].astype(str) + '/' + dfm['sid'].astype(str)).values
 
     dfm = dfm.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'], axis=1)
@@ -244,11 +245,57 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
 
     return dfm, meta
 
+def build_ffid_index(filename):
+    """Docstring."""
+    with segyio.open(filename, strict=False) as segyfile:
+        segyfile.mmap()
+        field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
+        seqno = segyfile.attributes(segyio.TraceField.TRACE_SEQUENCE_FILE)[:]
+        channel = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
+        rline = segyfile.attributes(segyio.TraceField.INLINE_3D)[:]
 
-class FieldIndex(DatasetIndex):
+    df = pd.DataFrame(dict(channel=channel, rline=rline, seqno=seqno))
+
+    df.index = pd.MultiIndex.from_arrays([field_record, np.arange(len(df))])
+
+    return df
+
+class DataFrameIndex(DatasetIndex):
     """Docstring."""
     def __init__(self, *args, **kwargs):
         self._idf = None
+        super().__init__(*args, **kwargs)
+
+    def build_from_index(self, index, idf):
+        """ Build index from another index for indices given. """
+        if isinstance(idf.index, pd.MultiIndex):
+            df = pd.concat([idf.loc[i] for i in index])
+            df.index = pd.MultiIndex.from_arrays([idf.index.get_level_values(0)[df.index], df.index])
+            self._idf = df
+        else:
+            self._idf = idf.loc[index]
+        return index
+
+    def create_subset(self, index):
+        """ Return a new FieldIndex based on the subset of indices given. """
+        return type(self).from_index(index=index, idf=self._idf)
+
+
+class SegyIndex(DataFrameIndex):
+    """Docstring."""
+    def build_index(self, index=None, idf=None, path=None):
+        """ Build index. """
+        if index is not None:
+            return self.build_from_index(index, idf)
+        df = build_ffid_index(path)
+        indices = df.index.levels[0]
+        self._idf = df
+        return np.array(indices)
+
+
+class SPSIndex(DataFrameIndex):
+    """Docstring."""
+    def __init__(self, *args, **kwargs):
         self.meta = None
         super().__init__(*args, **kwargs)
 
@@ -263,32 +310,23 @@ class FieldIndex(DatasetIndex):
         elif isinstance(bin_size, (list, tuple, np.ndarray)):
             df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
             self.meta = meta
-            indices = sorted(df.index.levels[0], key = lambda x: int(x.replace('/', '')))
+            indices = sorted(df.index.levels[0], key=lambda x: int(x.replace('/', '')))
         else:
             df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
             self.meta = meta
-            indices = sorted(df.index.levels[0], key = lambda x: (x.split('/')[0], int(x.split('/')[1])))
+            indices = sorted(df.index.levels[0],
+                             key=lambda x: (x.split('/')[0], int(x.split('/')[1])))
         self._idf = df
         if bin_size is not None:
             self.meta.update(dict(bin_size=bin_size))
         return np.array(indices)
-
-    def build_from_index(self, index, idf):
-        """ Build index from another index for indices given. """
-        self._idf = idf.loc[index]
-        return index
-
-    def create_subset(self, index):
-        """ Return a new FieldIndex based on the subset of indices given. """
-        return type(self).from_index(index=index, idf=self._idf)
 
     def convert_to_stacked(self):
         """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
             return DatasetIndex([0])
-        else:
-            return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
+        return DatasetIndex(np.unique([i.split('/')[0] for i in self._idf.index.levels[0]]))
 
     def show_heatmap(self, figsize=None, save_to=None, dpi=300):
         """Docstring."""
