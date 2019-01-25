@@ -298,8 +298,11 @@ class DataFrameIndex(DatasetIndex):
     def build_from_index(self, index, idf):
         """ Build index from another index for indices given. """
         if isinstance(idf.index, pd.MultiIndex):
-            df = pd.concat([idf.loc[i] for i in index])
-            df.index = pd.MultiIndex.from_arrays([idf.index.get_level_values(0)[df.index], df.index])
+            dfs = [idf.loc[i] for i in index]
+            df = pd.concat(dfs)
+            df.index = pd.MultiIndex.from_arrays([np.repeat(index, [len(d) for d in dfs])] +
+                                                 [df.index.get_level_values(i) for
+                                                  i in range(df.index.nlevels)])
             self._idf = df
         else:
             self._idf = idf.loc[index]
@@ -327,7 +330,7 @@ class SegyFilesIndex(DataFrameIndex):
                          axis=1, inplace=True)
                 self._idf = idf
                 self.meta.update(index.meta)
-                return idf.index.values
+                return idf.index.levels[0].values
 
         index = FilesIndex(**kwargs)
         dfs = [FieldIndex(segyfile=index.get_fullpath(i))._idf for i in index.indices]
@@ -337,10 +340,8 @@ class SegyFilesIndex(DataFrameIndex):
         df.index = pd.MultiIndex.from_arrays([paths, df.index.get_level_values('field_id'),
                                               df.index.get_level_values('trace_id')],
                                              names=['file_id', 'field_id', 'trace_id'])
-
-        indices = df.index.levels[0]
         self._idf = df
-        return np.array(indices)
+        return df.index.levels[0].values
 
 
 class TraceIndex(DataFrameIndex):
@@ -379,7 +380,7 @@ class FieldIndex(DataFrameIndex):
                 idf.drop(['trace_id', 'field_id'], axis=1, inplace=True)
                 self._idf = idf
                 self.meta.update(index.meta)
-                return idf.index.values
+                return idf.index.levels[0]
         if segyfile is not None:
             df = make_segy_field_index(segyfile)
         else:
@@ -413,7 +414,7 @@ class BinsIndex(DataFrameIndex):
                      axis=1, inplace=True)
             self._idf = idf
             self.meta.update(dict(bin_size=bin_size))
-            return idf.index.values
+            return idf.index.levels[0]
 
         df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
         indices = df.index.levels[0]

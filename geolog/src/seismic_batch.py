@@ -13,7 +13,7 @@ from batchflow import (action, inbatch_parallel, Batch,
                        FilesIndex, DatasetIndex,
                        ImagesBatch, any_action_failed)
 
-from .field_index import SegyIndex, SPSIndex, DataFrameIndex
+from .field_index import SegyFilesIndex, FieldIndex, DataFrameIndex
 from .utils import IndexTracker, partialmethod
 from .batch_tools import nj_sample_crops, pts_to_indices
 
@@ -186,14 +186,12 @@ class SeismicBatch(Batch):
             raise ValueError('Invalid data ndim.')
 
     @action
-    def load(self, src=None, path=None, fmt=None, components=None, *args, **kwargs):
+    def load(self, src=None, path=None, fmt=None, component=None, *args, **kwargs):
         """Docstring."""
         if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
             return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
-        if isinstance(self.index, SPSIndex):
-            return self._load_from_sps_index(path=path, fmt=fmt, *args, **kwargs)
-        if isinstance(self.index, SegyIndex):
-            return self._load_from_segy_index(path=path, fmt=fmt, *args, **kwargs)
+        if isinstance(self.index, SegyFilesIndex):
+            return self._load_from_segy_files(component=component, *args, **kwargs)
         if isinstance(src, pd.DataFrame):
             return self._load_from_df(src, *args, **kwargs)
         if path is not None:
@@ -263,26 +261,26 @@ class SeismicBatch(Batch):
 
         return self
 
-    def _load_from_segy_index(self, path=None, fmt=None, sort_by='channel', skip_channels=0):
+    @inbatch_parallel(init="indices", target="threads")
+    def _load_from_segy_files(self, index, component='traces', sort_by='trace_number'):
         """Docstring."""
-        idf = self.index._idf # pylint: disable=protected-access
-        seqno = idf['seqno'].values
+        pos = self.get_pos(None, "indices", index)
+        path = index
+        idf = self.index._idf.loc[index] # pylint: disable=protected-access
 
-        idf['_pos'] = np.arange(len(idf))
+        with segyio.open(path, strict=False) as segyfile:
+            segyfile.mmap()
+            field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
+            trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
+            seqno = segyfile.attributes(segyio.TraceField.TRACE_SEQUENCE_FILE)[:]
+            df = pd.DataFrame(dict(field_id=field_record, trace_number=trace_number, seqno=seqno))
+            channels = (idf.index.to_frame()
+                        .merge(idf, how='left', left_index=True, right_index=True)
+                        .merge(df, on=['field_id', 'trace_number'])
+                        .sort_values(by=sort_by)['seqno'].values)
+            traces = np.array([np.atleast_2d(segyfile.trace[i - 1]) for i in channels] + [None])[:-1]
 
-        batch = (type(self)(DatasetIndex(seqno))
-                 .load(path=path, fmt=fmt, components='traces', skip_channels=skip_channels))
-
-        idf['_trace'] = batch.traces
-
-        for index, group in idf.groupby(level=0):
-            ipos = self.get_pos(None, "indices", index)
-            group = group.dropna(axis=0).sort_values(by=sort_by)
-            self.traces[ipos] = group['_trace'].values
-            self.meta[ipos] = dict(sorting=sort_by)
-
-        idf.drop(labels=['_pos', '_trace'], axis=1, inplace=True)
-
+        getattr(self, component)[pos] = traces
         return self
 
 
