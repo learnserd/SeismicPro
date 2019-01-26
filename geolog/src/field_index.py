@@ -157,8 +157,8 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
     dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
 
-    dfm = dfm.drop(labels=['tape', 'xid', 'from_channel', 'to_channel',
-                           'from_receiver', 'to_receiver', 'x_index'], axis=1)
+    dfm.drop(labels=['tape', 'xid', 'from_channel', 'to_channel',
+                     'from_receiver', 'to_receiver', 'x_index'], axis=1, inplace=True)
 
     return dfm, meta
 
@@ -232,13 +232,16 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
     return df, meta
 
-def make_sps_field_index(dfr, dfs, dfx, get_file_by_index=None):
+def make_sps_index(dfr, dfs, dfx):
     """Docstring."""
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
                           list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
+
+    dfx.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'],
+             axis=1, inplace=True)
 
     dtypes = dfx.dtypes.values
     dfx = pd.DataFrame(dfx.values.repeat(n_reps, axis=0), columns=dfx.columns)
@@ -251,41 +254,21 @@ def make_sps_field_index(dfr, dfs, dfx, get_file_by_index=None):
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
     dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
-    field_id = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
-
-    dfm = dfm.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'], axis=1)
-    dfm['field_id'] = field_id
-
-    dfm.index = pd.MultiIndex.from_arrays([field_id, np.arange(len(dfm))],
-                                          names['field_id', 'trace_id'])
+    dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
+    dfm['trace_id'] = np.arange(len(dfm))
 
     return dfm
 
-def make_segy_field_index(filename):
+def make_segy_index(filename):
     """Docstring."""
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
         field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
         trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
 
-    df = pd.DataFrame(dict(trace_number=trace_number))
-
-    df.index = pd.MultiIndex.from_arrays([field_record, np.arange(len(df))],
-                                         names=['field_id', 'trace_id'])
-
-    return df
-
-def make_segy_trace_index(filename):
-    """Docstring."""
-    with segyio.open(filename, strict=False) as segyfile:
-        segyfile.mmap()
-        field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
-        trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
-
-    df = pd.DataFrame(dict(trace_number=trace_number, field_id=field_record))
-    df.index.name = 'trace_id'
-
-    return df
+    return pd.DataFrame(dict(trace_number=trace_number,
+                             field_id=field_record,
+                             trace_id=np.arange(segyfile.tracecount)))
 
 
 class DataFrameIndex(DatasetIndex):
@@ -315,79 +298,68 @@ class DataFrameIndex(DatasetIndex):
 
 class SegyFilesIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, paths_dict=None, **kwargs):
+    def build_index(self, index=None, idf=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            else:
-                idf = index._idf
-                idf = idf.index.to_frame().merge(idf, how='left', left_index=True, right_index=True)
-                paths = [paths_dict[field_id] for field_id in idf.field_id]
-                idf.index = pd.MultiIndex.from_arrays([paths, idf.field_id, idf.trace_id],
-                                                      names=['file_id', 'field_id', 'trace_id'])
-                idf.drop(set(['file_id', 'field_id', 'trace_id']).intersection(idf.columns),
-                         axis=1, inplace=True)
-                self._idf = idf
-                self.meta.update(index.meta)
-                return idf.index.levels[0].values
+            idf = index._idf.reset_index()
+            if 'file_id' not in idf.columns.tolist():
+                df = type(self)(**kwargs)._idf.reset_index()
+                idf = idf.merge(df, how='inner')
+
+            self._idf = idf.set_index(['file_id', 'field_id', 'trace_id'])
+            self.meta.update(index.meta)
+            return self._idf.index.levels[0]
 
         index = FilesIndex(**kwargs)
-        dfs = [FieldIndex(segyfile=index.get_fullpath(i))._idf for i in index.indices]
-        paths = np.repeat([index.get_fullpath(i) for i in index.indices], [len(df) for df in dfs])
+        dfs = [make_segy_index(index.get_fullpath(i)) for i in index.indices]
         df = pd.concat(dfs)
-        df.trace_id = np.arange(len(df))
-        df.index = pd.MultiIndex.from_arrays([paths, df.index.get_level_values('field_id'),
-                                              df.index.get_level_values('trace_id')],
-                                             names=['file_id', 'field_id', 'trace_id'])
-        self._idf = df
-        return df.index.levels[0].values
+        df['trace_id'] = np.arange(len(df))
+        df['file_id'] = np.repeat([index.get_fullpath(i) for i in index.indices],
+                                  [len(df) for df in dfs])
+        self._idf = df.set_index(['file_id', 'field_id', 'trace_id'])
+        return self._idf.index.levels[0]
 
 
 class TraceIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, segyfile=None):
+    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            else:
-                idf = index._idf
-                idf = idf.index.to_frame().merge(idf, how='left', left_index=True, right_index=True)
-                idf.index = idf.trace_id
-                idf.drop('trace_id', axis=1, inplace=True)
-                self._idf = idf
-                self.meta.update(index.meta)
-                return idf.index.values
-        df = make_segy_trace_index(segyfile)
-        indices = df.index.values
+            self._idf = index._idf.reset_index().set_index(['trace_id'])
+            self.meta.update(index.meta)
+            return self._idf.index.values
+
+        if (dfr is None) and (dfs is None) and (dfx is None):
+            df = type(self)(SegyFilesIndex(**kwargs))._idf
+        else:
+            df = make_sps_index(dfr, dfs, dfx).set_index('trace_id')
+
         self._idf = df
-        return np.array(indices)
+        return self._idf.index.values
 
 
 class FieldIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None, segyfile=None):
+    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            else:
-                idf = index._idf
-                idf = idf.index.to_frame().merge(idf, how='left', left_index=True, right_index=True)
-                idf.index = pd.MultiIndex.from_arrays([idf.field_id, idf.trace_id],
-                                                      names=['field_id', 'trace_id'])
-                idf.drop(['trace_id', 'field_id'], axis=1, inplace=True)
-                self._idf = idf
-                self.meta.update(index.meta)
-                return idf.index.levels[0]
-        if segyfile is not None:
-            df = make_segy_field_index(segyfile)
+            self._idf = index._idf.reset_index().set_index(['field_id', 'trace_id'])
+            self.meta.update(index.meta)
+            return self._idf.index.levels[0]
+
+        if (dfr is None) and (dfs is None) and (dfx is None):
+            df = type(self)(SegyFilesIndex(**kwargs))._idf
         else:
-            df = make_sps_field_index(dfr, dfs, dfx)
-        indices = df.index.levels[0]
+            df = make_sps_index(dfr, dfs, dfx).set_index(['field_id', 'trace_id'])
+
         self._idf = df
-        return np.array(indices)
+        return self._idf.index.levels[0]
 
 
 class BinsIndex(DataFrameIndex):
@@ -398,29 +370,20 @@ class BinsIndex(DataFrameIndex):
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            idf = index._idf
-            idf = idf.index.to_frame().merge(idf, how='left', left_index=True, right_index=True)
-
-            if 'bin_id' not in idf.columns.tolist() + idf.index.names:
+            idf = index._idf.reset_index()
+            if 'bin_id' not in idf.columns.tolist():
                 df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
-                df = df.index.to_frame().merge(df, how='left', left_index=True, right_index=True)
-                df.drop('trace_id', axis=1, inplace=True)
-                idf = idf.merge(df,
-                                on=list(set(idf.columns.tolist()).intersection(df.columns.tolist())),
-                                how='left')
-            idf.index = pd.MultiIndex.from_arrays([idf.bin_id, idf.trace_id],
-                                                  names=['bin_id', 'trace_id'])
-            idf.drop(set(['bin_id', 'trace_id']).intersection(idf.columns),
-                     axis=1, inplace=True)
-            self._idf = idf
+                df = df.reset_index().drop('trace_id', axis=1)
+                idf = idf.merge(df, how='inner')
+
+            self._idf = idf.set_index(['bin_id', 'trace_id'])
             self.meta.update(dict(bin_size=bin_size))
-            return idf.index.levels[0]
+            return self._idf.index.levels[0]
 
         df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
-        indices = df.index.levels[0]
         self._idf = df
         self.meta.update(dict(bin_size=bin_size))
-        return np.array(indices)
+        return self._idf.index.levels[0]
 
     def show_heatmap(self, figsize=None, save_to=None, dpi=300):
         """Docstring."""

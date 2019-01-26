@@ -274,13 +274,13 @@ class SeismicBatch(Batch):
             trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
             seqno = segyfile.attributes(segyio.TraceField.TRACE_SEQUENCE_FILE)[:]
             df = pd.DataFrame(dict(field_id=field_record, trace_number=trace_number, seqno=seqno))
-            channels = (idf.index.to_frame()
-                        .merge(idf, how='left', left_index=True, right_index=True)
+            channels = (idf.reset_index()
                         .merge(df, on=['field_id', 'trace_number'])
                         .sort_values(by=sort_by)['seqno'].values)
             traces = np.array([np.atleast_2d(segyfile.trace[i - 1]) for i in channels] + [None])[:-1]
 
         getattr(self, component)[pos] = traces
+        self.meta[pos] = dict(sorting=sort_by)
         return self
 
 
