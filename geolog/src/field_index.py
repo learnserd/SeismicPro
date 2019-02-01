@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 import segyio
 
-from batchflow import DatasetIndex,FilesIndex
+from batchflow import DatasetIndex, FilesIndex
 
 from .batch_tools import show_1d_heatmap, show_2d_heatmap
 
@@ -112,15 +112,15 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['x_m'] = (dfm['x_s'] + dfm['x_r']) / 2.
-    dfm['y_m'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['x_cdp'] = (dfm['x_s'] + dfm['x_r']) / 2.
+    dfm['y_cdp'] = (dfm['y_s'] + dfm['y_r']) / 2.
     dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     dfm['x_index'] = None
     meta = {}
 
     for rline, group in dfm.groupby('rline'):
-        pts = group[['x_m', 'y_m']].values
+        pts = group[['x_cdp', 'y_cdp']].values
         if phi is None:
             if np.std(pts[:, 0]) > np.std(pts[:, 1]):
                 reg = LinearRegression().fit(pts[:, :1], pts[:, 1])
@@ -148,17 +148,18 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         index = np.digitize(ppx, bins)
 
         dfm.loc[dfm['rline'] == rline, 'x_index'] = index
-        meta.update({rline: dict(origin=_origin, phi=np.rad2deg(_phi))})
+        meta.update({rline: dict(origin=_origin,
+                                 phi=np.rad2deg(_phi),
+                                 bin_size=bin_size)})
 
-    bin_indices = (dfm['rline'].astype(str) + '/' + dfm['x_index'].astype(str)).values
-    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))],
-                                          names=['bin_id', 'trace_id'])
+    dfm['bin_id'] = (dfm['rline'].astype(str) + '/' + dfm['x_index'].astype(str)).values
+    dfm.set_index('bin_id', inplace=True)
 
-    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
-    dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
 
-    dfm.drop(labels=['tape', 'xid', 'from_channel', 'to_channel',
-                     'from_receiver', 'to_receiver', 'x_index'], axis=1, inplace=True)
+    dfm.drop(labels=['from_channel', 'to_channel',
+                     'from_receiver', 'to_receiver',
+                     'x_index'], axis=1, inplace=True)
 
     return dfm, meta
 
@@ -184,8 +185,8 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['x_m'] = (dfm['x_s'] + dfm['x_r']) / 2.
-    dfm['y_m'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['x_cdp'] = (dfm['x_s'] + dfm['x_r']) / 2.
+    dfm['y_cdp'] = (dfm['y_s'] + dfm['y_r']) / 2.
     dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     if phi is None:
@@ -195,7 +196,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     if phi > 0:
         phi += -np.pi / 2
 
-    pts = rot_2d(dfm[['x_m', 'y_m']].values, -phi)
+    pts = rot_2d(dfm[['x_cdp', 'y_cdp']].values, -phi)
 
     if origin is None:
         shift = gradient_bins_shift(pts, bin_size, iters)
@@ -210,21 +211,19 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     x_index = np.digitize(pts[:, 0], xbins)
     y_index = np.digitize(pts[:, 1], ybins)
 
-    bin_indices = np.array([ix + '/' + iy for ix, iy in zip(x_index.astype(str), y_index.astype(str))])
-    dfm.index = pd.MultiIndex.from_arrays([bin_indices, np.arange(len(dfm))],
-                                          names=['bin_id', 'trace_id'])
+    dfm['bin_id'] = np.array([ix + '/' + iy for ix, iy in zip(x_index.astype(str), y_index.astype(str))])
+    dfm.set_index('bin_id', inplace=True)
 
-    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
-    dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
 
-    dfm = dfm.drop(labels=['tape', 'xid', 'from_channel', 'to_channel',
+    dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver'], axis=1)
 
-    meta = dict(origin=origin, phi=np.rad2deg(phi))
+    meta = dict(origin=origin, phi=np.rad2deg(phi), bin_size=(bin_size, bin_size))
 
     return dfm, meta
 
-def make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
+def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
     """Docstring."""
     if isinstance(bin_size, (list, tuple, np.ndarray)):
         df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
@@ -253,9 +252,8 @@ def make_sps_index(dfr, dfs, dfx):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2)
+    dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
     dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
-    dfm['trace_id'] = np.arange(len(dfm))
 
     return dfm
 
@@ -268,7 +266,7 @@ def make_segy_index(filename):
 
     return pd.DataFrame(dict(trace_number=trace_number,
                              field_id=field_record,
-                             trace_id=np.arange(segyfile.tracecount)))
+                             seq_number=np.arange(segyfile.tracecount)))
 
 
 class DataFrameIndex(DatasetIndex):
@@ -278,17 +276,24 @@ class DataFrameIndex(DatasetIndex):
         self.meta = {}
         super().__init__(*args, **kwargs)
 
+    def merge(self, x, **kwargs):
+        """Docstring."""
+        inames = self._idf.index.names
+        self._idf = (self._idf.reset_index()
+                     .merge(x._idf.reset_index(), # pylint: disable=protected-access
+                            on=['field_id', 'trace_number'],
+                            **kwargs)
+                     .set_index(inames))
+        return self
+
+    def append(self, x):
+        """Docstring."""
+        self._idf = self._idf.append(x._idf) # pylint: disable=protected-access
+        return self
+
     def build_from_index(self, index, idf):
         """ Build index from another index for indices given. """
-        if isinstance(idf.index, pd.MultiIndex):
-            dfs = [idf.loc[i] for i in index]
-            df = pd.concat(dfs)
-            df.index = pd.MultiIndex.from_arrays([np.repeat(index, [len(d) for d in dfs])] +
-                                                 [df.index.get_level_values(i) for
-                                                  i in range(df.index.nlevels)])
-            self._idf = df
-        else:
-            self._idf = idf.loc[index]
+        self._idf = idf.loc[index]
         return index
 
     def create_subset(self, index):
@@ -298,97 +303,115 @@ class DataFrameIndex(DatasetIndex):
 
 class SegyFilesIndex(DataFrameIndex):
     """Docstring."""
+    def build_index(self, index=None, idf=None, name=None, **kwargs):
+        """ Build index. """
+        if index is not None:
+            if idf is not None:
+                return self.build_from_index(index, idf)
+            if kwargs:
+                index = type(self)(name=name, **kwargs)
+                self = self.merge(index, how='outer')
+            idf = index._idf # pylint: disable=protected-access
+            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
+                         .set_index((name, 'file_id')))
+            return self._idf.index.unique()
+
+        index = FilesIndex(**kwargs)
+        dfs = [make_segy_index(index.get_fullpath(i)) for i in index.indices]
+        df = pd.concat(dfs)
+        df['seq_number'] = np.arange(len(df))
+        df['file_id'] = np.repeat([index.get_fullpath(i) for i in index.indices],
+                                  [len(df) for df in dfs])
+        df = df[['field_id', 'trace_number', 'file_id', 'seq_number']]
+        df.columns = pd.MultiIndex.from_arrays([['field_id', 'trace_number', name, name],
+                                                ['', '', 'file_id', 'seq_number']])
+        df.set_index((name, 'file_id'), inplace=True)
+        self._idf = df
+        return self._idf.index.unique()
+
+
+class TraceIndex(DataFrameIndex):
+    """Docstring."""
     def build_index(self, index=None, idf=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            idf = index._idf.reset_index()
-            if 'file_id' not in idf.columns.tolist():
-                df = type(self)(**kwargs)._idf.reset_index()
-                idf = idf.merge(df, how='inner')
-
-            self._idf = idf.set_index(['file_id', 'field_id', 'trace_id'])
-            self.meta.update(index.meta)
-            return self._idf.index.levels[0]
-
-        index = FilesIndex(**kwargs)
-        dfs = [make_segy_index(index.get_fullpath(i)) for i in index.indices]
-        df = pd.concat(dfs)
-        df['trace_id'] = np.arange(len(df))
-        df['file_id'] = np.repeat([index.get_fullpath(i) for i in index.indices],
-                                  [len(df) for df in dfs])
-        self._idf = df.set_index(['file_id', 'field_id', 'trace_id'])
-        return self._idf.index.levels[0]
-
-
-class TraceIndex(DataFrameIndex):
-    """Docstring."""
-    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None, **kwargs):
-        """ Build index. """
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            self._idf = index._idf.reset_index().set_index(['trace_id'])
+            idf = index._idf # pylint: disable=protected-access
+            self._idf = idf.reset_index(drop=(idf.index.names[0] is None))
             self.meta.update(index.meta)
             return self._idf.index.values
 
-        if (dfr is None) and (dfs is None) and (dfx is None):
-            df = type(self)(SegyFilesIndex(**kwargs))._idf
+        if 'dfx' in kwargs.keys():
+            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
         else:
-            df = make_sps_index(dfr, dfs, dfx).set_index('trace_id')
+            df = make_sps_index(**kwargs)
 
         self._idf = df
-        return self._idf.index.values
+        return self._idf.index.unique()
+
+    def ravel(self, name='traces', order=None):
+        """Docstring."""
+        idf = self._idf
+        common = list(idf.columns.levels[0][idf.columns.labels[0][idf.columns.labels[1] == 0]])
+        names = list(set(idf.columns.levels[0]) - set(common)) if order is None else order
+        df_list = []
+        for n in names:
+            df = idf[common + [n]]
+            lev_0 = np.array(df.columns.get_level_values(0))
+            lev_0[lev_0 == n] = name
+            df.columns = pd.MultiIndex.from_arrays([lev_0, df.columns.get_level_values(1)])
+            df_list.append(df)
+        self._idf = pd.concat(df_list, ignore_index=True)
+        return type(self)(self)
 
 
 class FieldIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None, **kwargs):
+    def build_index(self, index=None, idf=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            self._idf = index._idf.reset_index().set_index(['field_id', 'trace_id'])
+            idf = index._idf # pylint: disable=protected-access
+            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
+                         .set_index('field_id'))
             self.meta.update(index.meta)
-            return self._idf.index.levels[0]
+            return self._idf.index.unique()
 
-        if (dfr is None) and (dfs is None) and (dfx is None):
-            df = type(self)(SegyFilesIndex(**kwargs))._idf
+        if 'dfx' in kwargs.keys():
+            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
         else:
-            df = make_sps_index(dfr, dfs, dfx).set_index(['field_id', 'trace_id'])
+            df = make_sps_index(**kwargs).set_index('field_id')
 
         self._idf = df
-        return self._idf.index.levels[0]
+        return self._idf.index.unique()
 
 
 class BinsIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, dfr=None, dfs=None, dfx=None,
-                    bin_size=None, origin=None, phi=None, iters=10):
+    def build_index(self, index=None, idf=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
-            idf = index._idf.reset_index()
-            if 'bin_id' not in idf.columns.tolist():
-                df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
-                df = df.reset_index().drop('trace_id', axis=1)
-                idf = idf.merge(df, how='inner')
+            if 'bin_id' not in self._idf.columns.tolist():
+                index = type(self)(**kwargs)
+                self = self.merge(index, how='outer')
 
-            self._idf = idf.set_index(['bin_id', 'trace_id'])
-            self.meta.update(dict(bin_size=bin_size))
-            return self._idf.index.levels[0]
+            self._idf.set_index('bin_id', inplace=True)
+            self.meta.update(dict(bin_size=kwargs['bin_size']))
+            return self._idf.index.unique()
 
-        df, meta = make_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
+        df, meta = make_bin_index(**kwargs)
         self._idf = df
-        self.meta.update(dict(bin_size=bin_size))
-        return self._idf.index.levels[0]
+        self.meta.update(meta)
+        return self._idf.index.unique()
 
-    def show_heatmap(self, figsize=None, save_to=None, dpi=300):
+    def show_heatmap(self, **kwargs):
         """Docstring."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
-            show_2d_heatmap(self._idf, figsize=figsize, save_to=save_to, dpi=dpi)
+            show_2d_heatmap(self._idf, **kwargs)
         else:
-            show_1d_heatmap(self._idf, figsize=figsize, save_to=save_to, dpi=dpi)
+            show_1d_heatmap(self._idf, **kwargs)

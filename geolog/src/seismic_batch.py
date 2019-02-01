@@ -3,17 +3,16 @@ import glob
 import os
 from textwrap import dedent
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
 import segyio
 
 from batchflow import (action, inbatch_parallel, Batch,
-                       FilesIndex, DatasetIndex,
+                       DatasetIndex,
                        ImagesBatch, any_action_failed)
 
-from .field_index import SegyFilesIndex, FieldIndex, DataFrameIndex
+from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex
 from .utils import IndexTracker, partialmethod
 from .batch_tools import nj_sample_crops, pts_to_indices
 
@@ -67,7 +66,7 @@ class SeismicBatch(Batch):
         if preloaded is None:
             self.traces = np.array([None] * len(self.index))
             self.annotation = np.array([None] * len(self.index))
-            self.meta = np.array([None] * len(self.index))
+            self.meta = np.array([dict()] * len(self.index))
 
     def _init_component(self, *args, **kwargs):
         """Create and preallocate a new attribute with the name ``dst`` if it
@@ -129,10 +128,10 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def to_2d(self, index, length_alingment=None):
+    def to_2d(self, index, component='traces', length_alingment=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        traces = self.traces[pos]
+        traces = getattr(self, component)[pos]
         if traces is None or len(traces) == 0:
             return
         try:
@@ -150,7 +149,7 @@ class SeismicBatch(Batch):
             traces_2d = np.zeros(shape)
             for i, arr in enumerate(traces):
                 traces_2d[i, :len(arr)] = arr[:nsamples]
-        self.traces[pos] = traces_2d
+        getattr(self, component)[pos] = traces_2d
 
     @action
     def stack(self, components):
@@ -186,133 +185,63 @@ class SeismicBatch(Batch):
             raise ValueError('Invalid data ndim.')
 
     @action
-    def load(self, src=None, path=None, fmt=None, component=None, *args, **kwargs):
+    def load(self, src=None, fmt=None, components=None, **kwargs):
         """Docstring."""
-        if isinstance(self.index, FilesIndex) or (src is not None and fmt is not None):
-            return self._load_from_paths(src=src, fmt=fmt, *args, **kwargs)
-        if isinstance(self.index, SegyFilesIndex):
-            return self._load_from_segy_files(component=component, *args, **kwargs)
-        if isinstance(src, pd.DataFrame):
-            return self._load_from_df(src, *args, **kwargs)
-        if path is not None:
-            return self._load_from_one_path(path, fmt=fmt, component=components, *args, **kwargs)
-        return super().load(src=src, fmt=fmt, components=components, *args, **kwargs)
+        if isinstance(self.index, DataFrameIndex):
+            return self._load_segy(components=components, **kwargs)
+        return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
-    @action
-    def _load_from_df(self, src, force=False):
+    def _load_segy(self, components='traces', sort_by='trace_number'):
         """Docstring."""
-        df = src.loc[self.indices]
-        for component in df.columns:
-            if force:
-                setattr(self, component, df[component].values)
-            elif hasattr(self, component):
-                setattr(self, component, df[component].values)
-        return self
-
-    def _load_from_one_path(self, path, fmt, component='traces', skip_channels=0):
-        """Docstring."""
-        if fmt == "segy":
-            with segyio.open(path, strict=False) as file:
-                traces = np.array([np.atleast_2d(file.trace[i])
-                                   for i in self.indices + skip_channels] + [None])[:-1]
-            setattr(self, component, traces)
-            return self
-        else:
-            raise NotImplementedError("Unknown file format.")
-
-    def _load_from_sps_index(self, path=None, fmt=None, sort_by='channel',
-                             get_file_by_index=None, skip_channels=0):
-        """Docstring."""
-        src = []
-        channels = []
-        pos = []
-
         idf = self.index._idf # pylint: disable=protected-access
-        idf['_pos'] = np.arange(len(idf))
 
-        for index, group in idf.groupby(['tape', 'xid']):
-            file = get_file_by_index(path, index)
-            if file is not None:
-                src.append(file)
-                channels.append(group['channel'].values)
-                pos.extend(group['_pos'].values)
+        if isinstance(components, str):
+            components = (components,)
 
-        if not src:
-            return self
+        trace_index = TraceIndex(self.index).ravel(name='traces', order=components)
+        order = []
+        for i, group in trace_index._idf.groupby(by=('traces', 'file_id')): # pylint: disable=protected-access
+            order.extend(group.index.tolist())
 
-        batch = (type(self)(DatasetIndex(np.arange(len(src))))
-                 .load(src=src, fmt=fmt, channels=channels, skip_channels=skip_channels))
+        segy_index = SegyFilesIndex(trace_index, name='traces')
+        idf2 = segy_index._idf # pylint: disable=protected-access
 
+        batch = type(self)(segy_index)._load_from_segy_files() # pylint: disable=protected-access
         all_traces = np.array([t for item in batch.traces for t in item] + [None])[:-1]
+        idf2['_trace'] = None
+        idf2.iloc[order, idf2.columns.get_loc('_trace')] = all_traces
 
-        idf['_trace'] = np.nan
-        idf.iloc[pos, idf.columns.get_loc('_trace')] = all_traces
+        comp_values = np.split(idf2['_trace'].values, len(components))
+        for i, comp in enumerate(components):
+            idf['_' + comp] = comp_values[i]
+            setattr(self, comp, np.array([None] * len(self)))
 
-        for index, group in idf.groupby(level=0):
-            ipos = self.get_pos(None, "indices", index)
-            group = group.dropna(axis=0).sort_values(by=sort_by)
-            self.traces[ipos] = group['_trace'].values
-            self.meta[ipos] = dict(sorting=sort_by,
-                                   sht_depth=group['sht_depth'].values if 'sht_depth' in group.columns else None,
-                                   uphole=group['uphole'].values if 'uphole' in group.columns else None,
-                                   z=group['z_s'].values if 'z_s' in group.columns else None)
-
-        idf.drop(labels=['_pos', '_trace'], axis=1, inplace=True)
+        if isinstance(self.index, TraceIndex):
+            pos = [self.get_pos(None, "indices", i) for i in self.indices]
+            for comp in components:
+                getattr(self, comp)[pos] = np.array(idf['_' + comp].tolist() + [None])[:-1]
+        else:
+            for i in self.indices:
+                ipos = self.get_pos(None, "indices", i)
+                df = idf.loc[[i]].reset_index().sort_values(by=sort_by)
+                for comp in components:
+                    getattr(self, comp)[ipos] = df['_' + comp].values
+                self.meta[ipos].update(dict(sorting=sort_by))
 
         return self
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_from_segy_files(self, index, component='traces', sort_by='trace_number'):
+    def _load_from_segy_files(self, index, component='traces'):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         path = index
-        idf = self.index._idf.loc[index] # pylint: disable=protected-access
-
+        idf = self.index._idf.loc[index][component] # pylint: disable=protected-access
         with segyio.open(path, strict=False) as segyfile:
-            segyfile.mmap()
-            field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
-            trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
-            seqno = segyfile.attributes(segyio.TraceField.TRACE_SEQUENCE_FILE)[:]
-            df = pd.DataFrame(dict(field_id=field_record, trace_number=trace_number, seqno=seqno))
-            channels = (idf.reset_index()
-                        .merge(df, on=['field_id', 'trace_number'])
-                        .sort_values(by=sort_by)['seqno'].values)
-            traces = np.array([np.atleast_2d(segyfile.trace[i - 1]) for i in channels] + [None])[:-1]
+            traces = np.array([segyfile.trace[i] for i in np.atleast_1d(idf['seq_number'])] + [None])[:-1]
 
-        getattr(self, component)[pos] = traces
-        self.meta[pos] = dict(sorting=sort_by)
+        self.traces[pos] = traces
+        self.meta[pos] = dict(sorting=None)
         return self
-
-
-    @inbatch_parallel(init="indices", target="threads")
-    def _load_from_paths(self, index, src=None, fmt=None, channels=None, skip_channels=0):
-        """Docstring."""
-        if src is not None:
-            path = src[index]
-        elif isinstance(self.index, FilesIndex):
-            path = self.index.get_fullpath(index)  # pylint: disable=no-member
-        else:
-            raise ValueError("Source is not specified")
-        pos = self.get_pos(None, "indices", index)
-        if fmt == "segy":
-            with segyio.open(path, strict=False) as file:
-                if (file.sorting is not None) and (channels is None):
-                    self.traces[pos] = segyio.tools.cube(file)
-                else:
-                    if channels is None:
-                        self.traces[pos] = file.trace.raw[skip_channels:]
-                    else:
-                        self.traces[pos] = np.array([file.trace[i] for i in channels[index] + skip_channels])
-                self.meta[pos] = segyio.tools.metadata(file).__dict__
-        elif fmt == "pts":
-            pdir = os.path.split(path)[0] + '/*.pts'
-            files = glob.glob(pdir)
-            self.annotation[pos] = []
-            for file in files:
-                self.annotation[pos].append(np.loadtxt(file))
-            self.annotation[pos] = np.array(self.annotation[pos])
-        else:
-            raise NotImplementedError("Unknown file format.")
 
     @action
     @inbatch_parallel(init="indices", target="threads")
