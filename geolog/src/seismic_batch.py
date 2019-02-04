@@ -43,6 +43,18 @@ TEMPLATE_DOCSTRING = """
 """
 TEMPLATE_DOCSTRING = dedent(TEMPLATE_DOCSTRING).strip()
 
+def apply_to_each_component(method):
+    """Docstring."""
+    def decorator(self, *args, **kwargs):
+        """Docstring."""
+        components = kwargs.pop('components')
+        if isinstance(components, str):
+            components = (components, )
+        for comp in components:
+            kwargs.update(dict(component=comp))
+            method(self, *args, **kwargs)
+        return self
+    return decorator
 
 def add_actions(actions_dict, template_docstring):
     """Add new actions
@@ -56,6 +68,7 @@ def add_actions(actions_dict, template_docstring):
             setattr(cls, method_name, method)
         return cls
     return decorator
+
 
 @add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
@@ -127,8 +140,9 @@ class SeismicBatch(Batch):
         getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
-    @inbatch_parallel(init="indices", target="threads")
-    def to_2d(self, index, component='traces', length_alingment=None):
+    @inbatch_parallel(init="indices", target="threads")    
+    @apply_to_each_component
+    def to_2d(self, index, components='traces', length_alingment=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         traces = getattr(self, component)[pos]
@@ -191,42 +205,33 @@ class SeismicBatch(Batch):
             return self._load_segy(components=components, **kwargs)
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
-    def _load_segy(self, components='traces', sort_by='trace_number'):
+    @apply_to_each_component
+    def _load_segy(self, component='traces', sort_by='trace_number'):
         """Docstring."""
         idf = self.index._idf # pylint: disable=protected-access
+        idf['_pos'] = np.arange(len(idf))
 
-        if isinstance(components, str):
-            components = (components,)
+        segy_index = SegyFilesIndex(self.index, name=component)
+        order = np.hstack([segy_index._idf.loc[i, '_pos'].tolist() for # pylint: disable=protected-access
+                           i in segy_index.indices])
 
-        trace_index = TraceIndex(self.index).ravel(name='traces', order=components)
-        order = []
-        for i, group in trace_index._idf.groupby(by=('traces', 'file_id')): # pylint: disable=protected-access
-            order.extend(group.index.tolist())
-
-        segy_index = SegyFilesIndex(trace_index, name='traces')
-        idf2 = segy_index._idf # pylint: disable=protected-access
-
-        batch = type(self)(segy_index)._load_from_segy_files() # pylint: disable=protected-access
+        batch = type(self)(segy_index)._load_from_segy_files(component=component) # pylint: disable=protected-access
         all_traces = np.array([t for item in batch.traces for t in item] + [None])[:-1]
-        idf2['_trace'] = None
-        idf2.iloc[order, idf2.columns.get_loc('_trace')] = all_traces
 
-        comp_values = np.split(idf2['_trace'].values, len(components))
-        for i, comp in enumerate(components):
-            idf['_' + comp] = comp_values[i]
-            setattr(self, comp, np.array([None] * len(self)))
-
+        res = np.array([None] * len(self))
         if isinstance(self.index, TraceIndex):
-            pos = [self.get_pos(None, "indices", i) for i in self.indices]
-            for comp in components:
-                getattr(self, comp)[pos] = np.array(idf['_' + comp].tolist() + [None])[:-1]
+            items = order[[self.get_pos(None, "indices", i) for i in self.indices]]
+            res = all_traces[items]
         else:
             for i in self.indices:
                 ipos = self.get_pos(None, "indices", i)
-                df = idf.loc[[i]].reset_index().sort_values(by=sort_by)
-                for comp in components:
-                    getattr(self, comp)[ipos] = df['_' + comp].values
-                self.meta[ipos].update(dict(sorting=sort_by))
+                df = idf.loc[[i]].reset_index()
+                items = order[df.sort_values(by=sort_by if sort_by in df.columns else
+                                             (component, sort_by))['_pos'].tolist()]
+                res[ipos] = all_traces[items]
+            self.meta[ipos].update(dict(sorting=sort_by))
+
+        setattr(self, component, res)
 
         return self
 

@@ -350,21 +350,6 @@ class TraceIndex(DataFrameIndex):
         self._idf = df
         return self._idf.index.unique()
 
-    def ravel(self, name='traces', order=None):
-        """Docstring."""
-        idf = self._idf
-        common = list(idf.columns.levels[0][idf.columns.labels[0][idf.columns.labels[1] == 0]])
-        names = list(set(idf.columns.levels[0]) - set(common)) if order is None else order
-        df_list = []
-        for n in names:
-            df = idf[common + [n]]
-            lev_0 = np.array(df.columns.get_level_values(0))
-            lev_0[lev_0 == n] = name
-            df.columns = pd.MultiIndex.from_arrays([lev_0, df.columns.get_level_values(1)])
-            df_list.append(df)
-        self._idf = pd.concat(df_list, ignore_index=True)
-        return type(self)(self)
-
 
 class FieldIndex(DataFrameIndex):
     """Docstring."""
