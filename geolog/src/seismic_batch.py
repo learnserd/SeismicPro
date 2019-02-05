@@ -309,15 +309,25 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init="indices", target="threads")
-    def sort_traces(self, index, sort_by):
+    @apply_to_each_component
+    def sort_traces(self, index, components, sort_by):
         """Docstring."""
+        component = components
+        if not isinstance(self.index, DataFrameIndex):
+            raise TypeError("Sorting is not supported for this Index.")
+
         pos = self.get_pos(None, "indices", index)
-        if isinstance(self.index, DataFrameIndex):
-            idf = self.index._idf.loc[index] # pylint: disable=protected-access
-        else:
-            raise ValueError("Sorting is not supported for this Index class")
-        order = np.argsort(idf[sort_by].values)
-        self.traces[pos] = self.traces[pos][order]
+        sorting = self.meta[pos]['sorting']
+        if sorting == sort_by:
+            return
+
+        df = (self.index._idf.loc[[index]] # pylint: disable=protected-access
+              .reset_index(drop=isinstance(self.index, TraceIndex))
+              .sort_values(by=sorting if sorting not in FILE_DEPENDEND_COLUMNS else
+                           (sorting, component)))
+        order = np.argsort(df[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
+                              (sort_by, component)].tolist())
+        getattr(self, component)[pos] = getattr(self, component)[pos][order]
         self.meta[pos]['sorting'] = sort_by
 
     @action
