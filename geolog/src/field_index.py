@@ -181,7 +181,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         dfx[c] = dfx[c].astype(dtypes[i])
 
     dfx['rid'] = rids
-    dfx['trace_number'] = channels
+    dfx['TraceNumber'] = channels
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
@@ -248,25 +248,32 @@ def make_sps_index(dfr, dfs, dfx):
         dfx[c] = dfx[c].astype(dtypes[i])
 
     dfx['rid'] = rids
-    dfx['trace_number'] = channels
+    dfx['TraceNumber'] = channels
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
     dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
-    dfm['field_id'] = (dfm['tape'].astype(str) + '/' + dfm['xid'].astype(str)).values
 
     return dfm
 
-def make_segy_index(filename):
+DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
+
+def make_segy_index(filename, extra_headers=None):
     """Docstring."""
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
-        field_record = segyfile.attributes(segyio.TraceField.FieldRecord)[:]
-        trace_number = segyfile.attributes(segyio.TraceField.TraceNumber)[:]
-
-    return pd.DataFrame(dict(trace_number=trace_number,
-                             field_id=field_record,
-                             seq_number=np.arange(segyfile.tracecount)))
+        if extra_headers == 'all':
+            headers = file.header[0].keys()
+        elif extra_headers is None:
+            headers = DEFAULT_SEGY_HEADERS
+        else:
+            headers = list(set(DEFAULT_SEGY_HEADERS + list(extra_headers)))
+        meta = dict()
+        for k in headers:
+            meta[k] = segyfile.attributes(getattr(segyio.TraceField, k))[:]
+        meta['TRACE_SEQUENCE_FILE'] = 1 + np.arange(segyfile.tracecount)
+        meta['file_id'] = np.repeat(filename, segyfile.tracecount)
+    return pd.DataFrame(meta)
 
 
 class DataFrameIndex(DatasetIndex):
@@ -281,7 +288,7 @@ class DataFrameIndex(DatasetIndex):
         inames = self._idf.index.names
         self._idf = (self._idf.reset_index()
                      .merge(x._idf.reset_index(), # pylint: disable=protected-access
-                            on=['field_id', 'trace_number'],
+                            how='inner',
                             **kwargs)
                      .set_index(inames))
         return self
@@ -300,10 +307,11 @@ class DataFrameIndex(DatasetIndex):
         """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
 
+FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
 class SegyFilesIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, name=None, **kwargs):
+    def build_index(self, index=None, idf=None, name=None, extra_headers=None, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
@@ -313,19 +321,17 @@ class SegyFilesIndex(DataFrameIndex):
                 self = self.merge(index, how='outer')
             idf = index._idf # pylint: disable=protected-access
             self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index((name, 'file_id')))
+                         .set_index(('file_id', name)))
             return self._idf.index.unique()
 
         index = FilesIndex(**kwargs)
-        dfs = [make_segy_index(index.get_fullpath(i)) for i in index.indices]
-        df = pd.concat(dfs)
-        df['seq_number'] = np.arange(len(df))
-        df['file_id'] = np.repeat([index.get_fullpath(i) for i in index.indices],
-                                  [len(df) for df in dfs])
-        df = df[['field_id', 'trace_number', 'file_id', 'seq_number']]
-        df.columns = pd.MultiIndex.from_arrays([['field_id', 'trace_number', name, name],
-                                                ['', '', 'file_id', 'seq_number']])
-        df.set_index((name, 'file_id'), inplace=True)
+        df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers) for
+                         i in index.indices])
+        common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
+        df = df[common_cols + FILE_DEPENDEND_COLUMNS]
+        df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
+                                                [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
+        df.set_index(('file_id', name), inplace=True)
         self._idf = df
         return self._idf.index.unique()
 
@@ -360,14 +366,14 @@ class FieldIndex(DataFrameIndex):
                 return self.build_from_index(index, idf)
             idf = index._idf # pylint: disable=protected-access
             self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index('field_id'))
+                         .set_index('FieldRecord'))
             self.meta.update(index.meta)
             return self._idf.index.unique()
 
         if 'dfx' in kwargs.keys():
             df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
         else:
-            df = make_sps_index(**kwargs).set_index('field_id')
+            df = make_sps_index(**kwargs).set_index('FieldRecord')
 
         self._idf = df
         return self._idf.index.unique()

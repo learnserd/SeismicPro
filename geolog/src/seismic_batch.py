@@ -3,6 +3,7 @@ import glob
 import os
 from textwrap import dedent
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
@@ -12,7 +13,7 @@ from batchflow import (action, inbatch_parallel, Batch,
                        DatasetIndex,
                        ImagesBatch, any_action_failed)
 
-from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex
+from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS, DEFAULT_SEGY_HEADERS
 from .utils import IndexTracker, partialmethod
 from .batch_tools import nj_sample_crops, pts_to_indices
 
@@ -51,7 +52,7 @@ def apply_to_each_component(method):
         if isinstance(components, str):
             components = (components, )
         for comp in components:
-            kwargs.update(dict(component=comp))
+            kwargs.update(dict(components=comp))
             method(self, *args, **kwargs)
         return self
     return decorator
@@ -144,6 +145,7 @@ class SeismicBatch(Batch):
     @apply_to_each_component
     def to_2d(self, index, components='traces', length_alingment=None):
         """Docstring."""
+        component = components
         pos = self.get_pos(None, "indices", index)
         traces = getattr(self, component)[pos]
         if traces is None or len(traces) == 0:
@@ -183,20 +185,68 @@ class SeismicBatch(Batch):
         else:
             raise NotImplementedError('Unknown file format.')
 
-    @inbatch_parallel(init="indices", target="threads")
-    def _dump_segy(self, index, path, component, **kwargs):
-        data = getattr(self, component)[index]
-        path = os.path.join(path, str(index) + '.sgy')
-        if data.ndim == 1:
-            segyio.tools.from_array(path, data=data, **kwargs)
-        elif data.ndim == 2:
-            segyio.tools.from_array2D(path, data=data, **kwargs)
-        elif data.ndim == 3:
-            segyio.tools.from_array3D(path, data=data, **kwargs)
-        elif data.ndim == 4:
-            segyio.tools.from_array4D(path, data=data, **kwargs)
+    def _dump_segy(self, path, component, split=True):
+        """Docstring."""
+        if split:
+            return self._dump_splitted_segy(path, component)
         else:
-            raise ValueError('Invalid data ndim.')
+            return self._dump_single_segy(path, component)
+
+    @inbatch_parallel(init="indices", target="threads")
+    def _dump_splitted_segy(self, index, path, component):
+        """Docstring."""
+        pos = self.get_pos(None, "indices", index)
+        data = getattr(self, component)[pos]
+        if isinstance(self.index, TraceIndex):
+            data = np.atleast_2d(data)
+
+        path = os.path.join(path, str(index) + '.sgy')
+        spec = segyio.spec()
+        spec.sorting = None
+        spec.format = 1
+        spec.samples = np.arange(len(data[0]))
+        spec.tracecount = len(data)
+        sort_by = self.meta[pos]['sorting']
+        df = self.index._idf.loc[[index]].reset_index(drop=isinstance(self.index, TraceIndex))
+        if sort_by is not None:
+            df = (df.sort_values(by=sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
+                                 (sort_by, component))
+                  .reset_index(drop=True))
+
+        headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
+        df = df[headers]
+        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+        with segyio.create(path, spec) as file:
+            file.trace = data
+            meta = df.to_dict('index')
+            for i, x in enumerate(file.header[:]):
+                meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
+                x.update(meta[i])
+
+        return self
+
+    def _dump_single_segy(self, path, component):
+        """Docstring."""
+        if not isinstance(self.index, TraceIndex):
+            raise TypeError('Index should be an instance of TraceIndex.')
+        data = getattr(self, component)
+        spec = segyio.spec()
+        spec.sorting = None
+        spec.format = 1
+        spec.samples = np.arange(len(data[0]))
+        spec.tracecount = len(data)
+        df = self.index._idf
+        headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
+        df = df[headers]
+        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+        with segyio.create(path, spec) as file:
+            file.trace = data
+            meta = df.to_dict('index')
+            for i, x in enumerate(file.header[:]):
+                meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
+                x.update(meta[i])
+
+        return self
 
     @action
     def load(self, src=None, fmt=None, components=None, **kwargs):
@@ -206,8 +256,9 @@ class SeismicBatch(Batch):
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
     @apply_to_each_component
-    def _load_segy(self, component='traces', sort_by='trace_number'):
+    def _load_segy(self, components='traces', sort_by='trace_number', **kwargs):
         """Docstring."""
+        component = components
         idf = self.index._idf # pylint: disable=protected-access
         idf['_pos'] = np.arange(len(idf))
 
@@ -215,34 +266,42 @@ class SeismicBatch(Batch):
         order = np.hstack([segy_index._idf.loc[i, '_pos'].tolist() for # pylint: disable=protected-access
                            i in segy_index.indices])
 
-        batch = type(self)(segy_index)._load_from_segy_files(component=component) # pylint: disable=protected-access
+        batch = type(self)(segy_index)._load_from_segy_files(component=component, **kwargs) # pylint: disable=protected-access
         all_traces = np.array([t for item in batch.traces for t in item] + [None])[:-1]
 
         res = np.array([None] * len(self))
         if isinstance(self.index, TraceIndex):
             items = order[[self.get_pos(None, "indices", i) for i in self.indices]]
             res = all_traces[items]
+            for i in range(len(self)):
+                self.meta[i].update(dict(sorting=None))
         else:
             for i in self.indices:
                 ipos = self.get_pos(None, "indices", i)
                 df = idf.loc[[i]].reset_index()
-                items = order[df.sort_values(by=sort_by if sort_by in df.columns else
-                                             (component, sort_by))['_pos'].tolist()]
+                items = order[df.sort_values(by=sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
+                                             (sort_by, component))['_pos'].tolist()]
                 res[ipos] = all_traces[items]
             self.meta[ipos].update(dict(sorting=sort_by))
 
         setattr(self, component, res)
+        idf.drop('_pos', axis=1, inplace=True)
+        self.index._idf.columns = pd.MultiIndex.from_arrays([idf.columns.get_level_values(0),
+                                                             idf.columns.get_level_values(1)])
 
         return self
 
     @inbatch_parallel(init="indices", target="threads")
-    def _load_from_segy_files(self, index, component='traces'):
+    def _load_from_segy_files(self, index, component='traces', tslice=None):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
         path = index
-        idf = self.index._idf.loc[index][component] # pylint: disable=protected-access
+        trace_seq = self.index._idf.loc[index][('TRACE_SEQUENCE_FILE', component)] # pylint: disable=protected-access
+        if tslice is None:
+            tslice = slice(None)
         with segyio.open(path, strict=False) as segyfile:
-            traces = np.array([segyfile.trace[i] for i in np.atleast_1d(idf['seq_number'])] + [None])[:-1]
+            traces = np.array([segyfile.trace[i - 1][tslice] for i in
+                               np.atleast_1d(trace_seq)] + [None])[:-1]
 
         self.traces[pos] = traces
         self.meta[pos] = dict(sorting=None)
