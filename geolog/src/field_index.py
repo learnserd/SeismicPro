@@ -8,6 +8,9 @@ from batchflow import DatasetIndex, FilesIndex
 
 from .batch_tools import show_1d_heatmap, show_2d_heatmap
 
+DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
+FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
+
 
 def get_phi(dfr, dfs):
     """Docstring."""
@@ -229,6 +232,7 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
         df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
     else:
         df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
+    df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
     return df, meta
 
 def make_sps_index(dfr, dfs, dfx):
@@ -253,12 +257,11 @@ def make_sps_index(dfr, dfs, dfx):
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
     dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
+    dfm.columns = pd.MultiIndex.from_arrays([dfm.columns, [''] * len(dfm.columns)])
 
     return dfm
 
-DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
-
-def make_segy_index(filename, extra_headers=None):
+def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
     """Docstring."""
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
@@ -271,9 +274,12 @@ def make_segy_index(filename, extra_headers=None):
         meta = dict()
         for k in headers:
             meta[k] = segyfile.attributes(getattr(segyio.TraceField, k))[:]
-        meta['TRACE_SEQUENCE_FILE'] = 1 + np.arange(segyfile.tracecount)
+        meta['TRACE_SEQUENCE_FILE'] = np.arange(1, segyfile.tracecount + 1)
         meta['file_id'] = np.repeat(filename, segyfile.tracecount)
-    return pd.DataFrame(meta)
+    df = pd.DataFrame(meta)
+    if drop_duplicates:
+        df.drop_duplicates(subset=['FieldRecord', 'TraceNumber'], keep='last', inplace=True)
+    return df
 
 
 class DataFrameIndex(DatasetIndex):
@@ -285,13 +291,25 @@ class DataFrameIndex(DatasetIndex):
 
     def merge(self, x, **kwargs):
         """Docstring."""
-        inames = self._idf.index.names
-        self._idf = (self._idf.reset_index()
-                     .merge(x._idf.reset_index(), # pylint: disable=protected-access
-                            how='inner',
-                            **kwargs)
-                     .set_index(inames))
+        idf = self._idf # pylint: disable=protected-access
+        xdf = x._idf # pylint: disable=protected-access
+        inames = idf.index.names[0]
+        idf.reset_index(drop=idf.index.names[0] is None, inplace=True)
+        xdf.reset_index(drop=xdf.index.names[0] is None, inplace=True)
+        if np.all(idf.columns.get_level_values(1) == '') or np.all(xdf.columns.get_level_values(1) == ''):
+            common = list(set(idf.columns.get_level_values(0).tolist())
+                          .intersection(xdf.columns.get_level_values(0)))
+            self._idf = idf.merge(xdf, on=common, **kwargs)
+        else:
+            self._idf = idf.merge(xdf, how='outer', **kwargs)
+
+        if inames is not None:
+            self._idf.set_index(inames, inplace=True)
+
         return self
+
+    def shuffle(self):
+        return self.create_subset(np.random.permutation(self.index))
 
     def append(self, x):
         """Docstring."""
@@ -307,33 +325,34 @@ class DataFrameIndex(DatasetIndex):
         """ Return a new FieldIndex based on the subset of indices given. """
         return type(self).from_index(index=index, idf=self._idf)
 
-FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
 class SegyFilesIndex(DataFrameIndex):
     """Docstring."""
-    def build_index(self, index=None, idf=None, name=None, extra_headers=None, **kwargs):
+    def build_index(self, index=None, idf=None, name=None,
+                    extra_headers=None, drop_duplicates=False, **kwargs):
         """ Build index. """
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
             if kwargs:
-                index = type(self)(name=name, **kwargs)
-                self = self.merge(index, how='outer')
+                segy_index = type(self)(name=name, extra_headers=extra_headers,
+                                        drop_duplicates=drop_duplicates, **kwargs)
+                index = segy_index.merge(index)
             idf = index._idf # pylint: disable=protected-access
             self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
                          .set_index(('file_id', name)))
-            return self._idf.index.unique()
+            return self._idf.index.unique().sort_values()
 
         index = FilesIndex(**kwargs)
-        df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers) for
-                         i in sorted(index.indices)])
+        df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, drop_duplicates) for
+                        i in sorted(index.indices)])
         common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
         df = df[common_cols + FILE_DEPENDEND_COLUMNS]
         df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                                 [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
         df.set_index(('file_id', name), inplace=True)
         self._idf = df
-        return self._idf.index.unique()
+        return self._idf.index.unique().sort_values()
 
 
 class TraceIndex(DataFrameIndex):
@@ -346,7 +365,7 @@ class TraceIndex(DataFrameIndex):
             idf = index._idf # pylint: disable=protected-access
             self._idf = idf.reset_index(drop=(idf.index.names[0] is None))
             self.meta.update(index.meta)
-            return self._idf.index.values
+            return self._idf.index.unique().sort_values()
 
         if 'dfx' in kwargs.keys():
             df = make_sps_index(**kwargs)
@@ -354,7 +373,7 @@ class TraceIndex(DataFrameIndex):
             df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
         self._idf = df
-        return self._idf.index.unique()
+        return self._idf.index.unique().sort_values()
 
 
 class FieldIndex(DataFrameIndex):
@@ -368,7 +387,7 @@ class FieldIndex(DataFrameIndex):
             self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
                          .set_index('FieldRecord'))
             self.meta.update(index.meta)
-            return self._idf.index.unique()
+            return self._idf.index.unique().sort_values()
 
         if 'dfx' in kwargs.keys():
             df = make_sps_index(**kwargs).set_index('FieldRecord')
@@ -376,7 +395,7 @@ class FieldIndex(DataFrameIndex):
             df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
         self._idf = df
-        return self._idf.index.unique()
+        return self._idf.index.unique().sort_values()
 
 
 class BinsIndex(DataFrameIndex):
@@ -392,12 +411,12 @@ class BinsIndex(DataFrameIndex):
 
             self._idf.set_index('bin_id', inplace=True)
             self.meta.update(dict(bin_size=kwargs['bin_size']))
-            return self._idf.index.unique()
+            return self._idf.index.unique().sort_values()
 
         df, meta = make_bin_index(**kwargs)
         self._idf = df
         self.meta.update(meta)
-        return self._idf.index.unique()
+        return self._idf.index.unique().sort_values()
 
     def show_heatmap(self, **kwargs):
         """Docstring."""

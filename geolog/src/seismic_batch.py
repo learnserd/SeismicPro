@@ -275,7 +275,7 @@ class SeismicBatch(Batch):
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
     @apply_to_each_component
-    def _load_segy(self, components='traces', sort_by='trace_number', **kwargs):
+    def _load_segy(self, components='traces', sort_by='TraceNumber', **kwargs):
         """Docstring."""
         component = components
         idf = self.index._idf # pylint: disable=protected-access
