@@ -326,7 +326,7 @@ class SegyFilesIndex(DataFrameIndex):
 
         index = FilesIndex(**kwargs)
         df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers) for
-                         i in index.indices])
+                         i in sorted(index.indices)])
         common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
         df = df[common_cols + FILE_DEPENDEND_COLUMNS]
         df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
@@ -349,9 +349,9 @@ class TraceIndex(DataFrameIndex):
             return self._idf.index.values
 
         if 'dfx' in kwargs.keys():
-            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-        else:
             df = make_sps_index(**kwargs)
+        else:
+            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
         self._idf = df
         return self._idf.index.unique()
@@ -371,9 +371,9 @@ class FieldIndex(DataFrameIndex):
             return self._idf.index.unique()
 
         if 'dfx' in kwargs.keys():
-            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-        else:
             df = make_sps_index(**kwargs).set_index('FieldRecord')
+        else:
+            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
         self._idf = df
         return self._idf.index.unique()

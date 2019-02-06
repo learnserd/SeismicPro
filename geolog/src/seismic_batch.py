@@ -91,7 +91,7 @@ class SeismicBatch(Batch):
             raise KeyError("dst argument must be specified")
         if not hasattr(self, dst):
             setattr(self, dst, np.array([None] * len(self.index)))
-        return self.indices
+        return self.indices        
 
     @action
     @inbatch_parallel(init="_init_component", src="traces", dst="traces", target="threads")
@@ -168,16 +168,6 @@ class SeismicBatch(Batch):
         getattr(self, component)[pos] = traces_2d
 
     @action
-    def stack(self, components):
-        """Docstring."""
-        res = type(self)(DatasetIndex(1))
-        for component in components:
-            data = getattr(self, component)
-            setattr(res, component, np.array([np.vstack(data)]))
-        res.meta[0] = dict(sorting=None)
-        return res
-
-    @action
     def dump(self, path, fmt, component='traces', **kwargs):
         """Docstring."""
         if fmt in ['sgy', 'segy']:
@@ -227,15 +217,14 @@ class SeismicBatch(Batch):
 
     def _dump_single_segy(self, path, component):
         """Docstring."""
-        if not isinstance(self.index, TraceIndex):
-            raise TypeError('Index should be an instance of TraceIndex.')
+        trace_index = TraceIndex(self.index)
         data = getattr(self, component)
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
         spec.samples = np.arange(len(data[0]))
         spec.tracecount = len(data)
-        df = self.index._idf
+        df = trace_index._idf # pylint: disable=protected-access
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         df = df[headers]
         df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
@@ -245,6 +234,36 @@ class SeismicBatch(Batch):
             for i, x in enumerate(file.header[:]):
                 meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
                 x.update(meta[i])
+
+        return self
+
+    @action
+    def merge_segy_files(self, component, path, samples):
+        """Docstring."""
+        segy_index = SegyFilesIndex(self.index, name=component)
+
+        df = segy_index._idf.reset_index() # pylint: disable=protected-access
+        spec = segyio.spec()
+        spec.sorting = None
+        spec.format = 1
+        spec.samples = samples
+        spec.tracecount = len(df)
+        headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
+        df = df[headers]
+        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+        with segyio.create(path, spec) as file:
+            i = 0
+            for index in segy_index.indices:
+                batch = (type(self)(segy_index.create_subset([index]))
+                         .load(components=component, sort_by='TRACE_SEQUENCE_FILE'))
+                data = np.array([t for item in getattr(batch, component) for t in item])
+                file.trace[i: i + len(data)] = data
+                meta = df.iloc[i: i + len(data)].to_dict('index')
+                for j, x in enumerate(file.header[i: i + len(data)]):
+                    meta[i + j][segyio.TraceField.TRACE_SEQUENCE_FILE] = i + j
+                    x.update(meta[i + j])
+
+                i += len(data)
 
         return self
 
@@ -330,102 +349,6 @@ class SeismicBatch(Batch):
         getattr(self, component)[pos] = getattr(self, component)[pos][order]
         self.meta[pos]['sorting'] = sort_by
 
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def summarize(self, index, axis=0, keepdims=True, max_offset=None):
-        """Docstring."""
-        pos = self.get_pos(None, "indices", index)
-        if max_offset is not None:
-            sort_by = self.meta[pos]['sorting']
-            offset = np.sort(self.index._idf.loc[index, sort_by].values) # pylint: disable=protected-access
-            mask = np.where(offset < max_offset ** 2)[0]
-        else:
-            mask = slice(0, None, None)
-        self.traces[pos] = np.mean(self.traces[pos][mask], axis=axis, keepdims=keepdims)
-
-    @action
-    @inbatch_parallel(init="indices", target="threads")
-    def filter_annotations(self, index, ann_names, mode):
-        """Docstring."""
-        if isinstance(self.index, FilesIndex):
-            path = self.index.get_fullpath(index)  # pylint: disable=no-member
-        else:
-            raise ValueError("Source path is not specified")
-        pdir = os.path.split(path)[0] + '/*.pts'
-        files = np.array([os.path.split(p)[1] for p in glob.glob(pdir)])
-        pos = self.get_pos(None, "indices", index)
-        indices = []
-        for ann in ann_names:
-            i = np.where(files == ann)[0]
-            if len(i):
-                indices.append(i[0])
-        if mode == "drop":
-            self.annotation[pos] = np.delete(self.annotation[pos], indices)
-        elif mode == "keep":
-            self.annotation[pos] = self.annotation[pos][indices]
-        else:
-            raise ValueError("Unknown filter mode")
-        return self
-
-    def _reraise_exceptions(self, results):
-        """Reraise all exceptions in the ``results`` list.
-        """
-        if any_action_failed(results):
-            all_errors = self.get_errors(results)
-            raise RuntimeError("Cannot assemble the batch", all_errors)
-
-    def _assemble_crops(self, results, *args, **kwargs):
-        """Concatenate results of different workers.
-        """
-        _ = args, kwargs
-        self._reraise_exceptions(results)
-        crops, labels = list(zip(*results))
-
-        crops = np.vstack(crops)
-        labels = np.hstack(labels)
-
-        return ImagesBatch(DatasetIndex(np.arange(len(crops))),
-                           preloaded=(crops, labels, np.zeros(len(crops))))
-
-    @action
-    @inbatch_parallel(init="indices", post="_assemble_crops", target="threads")
-    def sample_crops(self, index, size, origin, n_crops=None):
-        """Docstring."""
-        pos = self.get_pos(None, "indices", index)
-        traces, pts, meta = self.traces[pos], self.annotation[pos], self.meta[pos]
-
-        if isinstance(origin, (list, tuple, np.ndarray)):
-            labels = np.array([None] * len(origin))
-            sampled_pts = np.array(origin)
-
-        elif origin == "random_annotated_unbalanced":
-            stacked_pts = np.vstack(pts)[:, :3]
-            pos = np.random.randint(0, len(stacked_pts), size=n_crops)
-            sampled_pts = pts_to_indices(stacked_pts[pos], meta)
-            labels = np.repeat(np.arange(len(pts)), [len(p) for p in pts])[pos]
-
-        elif origin == "random_annotated_balanced":
-            labels = np.random.choice(np.arange(len(pts)), size=n_crops)
-            sampled_pts = np.zeros((n_crops, 3))
-            for i, arr in enumerate(pts):
-                mask = np.where(labels == i)
-                pos = np.random.randint(0, len(arr), size=len(mask[0]))
-                sampled_pts[mask] = arr[pos, :3]
-            sampled_pts = pts_to_indices(sampled_pts, meta)
-        else:
-            raise ValueError("Unknown sampling mode")
-
-        if isinstance(size, int):
-            size = tuple([size] * traces.ndim)
-
-        if traces.ndim == 2:
-            size = size + (1,)
-
-        crops = (nj_sample_crops(np.atleast_3d(traces), sampled_pts, size)
-                 .reshape((-1,) + size[:traces.ndim]))
-
-        return [crops, labels]
-
     def slice_tracker(self, index, axis, scroll_step=1, show_pts=False, **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
@@ -446,16 +369,14 @@ class SeismicBatch(Batch):
                                pts=ipts, axes_names=axes_names, **kwargs)
         return fig, tracker
 
-    def show_slice(self, index, axis=-1, offset=0, show_pts=False,
-                   figsize=None, save_to=None, dpi=None, component='traces', **kwargs):
+    def show_slice(self, index, axis=-1, offset=0, figsize=None, save_to=None,
+                   dpi=None, component='traces', **kwargs):
         """Docstring."""
         pos = self.get_pos(None, "indices", index)
-        traces = np.atleast_3d(getattr(self, component)[pos])
-        pts, meta = self.annotation[pos], self.meta[pos]
+        traces, meta = np.atleast_3d(getattr(self, component)[pos]), self.meta[pos]
         ix = [slice(None)] * traces.ndim
         ix[axis] = offset
         ax = np.delete(np.arange(3), axis)
-
         if meta["sorting"] == 2:
             axes_names = np.delete(["i-lines", "x-lines", "samples"], axis)
         elif meta["sorting"] == 1:
@@ -467,13 +388,6 @@ class SeismicBatch(Batch):
             plt.figure(figsize=figsize)
 
         plt.imshow(traces[ix].T, **kwargs)
-
-        if show_pts:
-            ipts = np.array([pts_to_indices(p[:, :3], meta) for p in pts])
-            for arr in ipts:
-                arr = arr[arr[:, axis] == offset]
-                plt.scatter(arr[:, ax[0]], arr[:, ax[1]], alpha=0.005)
-
         plt.ylabel(axes_names[1])
         plt.xlabel(axes_names[0])
         plt.axis('auto')
