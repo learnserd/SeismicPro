@@ -8,46 +8,35 @@ import matplotlib.pyplot as plt
 
 class IndexTracker:
     """Docstring."""
-    def __init__(self, ax, im, scroll_step=1, slice_names=None,
-                 pts=None, axes_names=None, **kwargs):
+    def __init__(self, ax, frames, frame_names, scroll_step=1, **kwargs):
         self.ax = ax
-        self.im = im
+        self.frames = frames
         self.step = scroll_step
-        self.slice_names = (np.arange(im.shape[-1], dtype="int")
-                            if slice_names is None else slice_names)
+        self.frame_names = frame_names
         self.img_kwargs = kwargs
-
-        self.ind = im.shape[-1] // 2
-        self.pts = pts
-        self.axes_names = ["x", "y"] if axes_names is None else axes_names
-
+        self.ind = len(frames) // 2
         self.update()
 
     def onscroll(self, event):
         """Docstring."""
         print("%s %s" % (event.button, event.step))
         if event.button == 'up':
-            self.ind = np.clip(self.ind + self.step, 0, self.im.shape[-1] - 1)
+            self.ind = np.clip(self.ind + self.step, 0, len(self.frames) - 1)
         else:
-            self.ind = np.clip(self.ind - self.step, 0, self.im.shape[-1] - 1)
+            self.ind = np.clip(self.ind - self.step, 0, len(self.frames) - 1)
         self.update()
 
     def update(self):
         """Docstring."""
         self.ax.clear()
-        self.ax.imshow(self.im[:, :, self.ind], **self.img_kwargs)
-        self.ax.set_title('slice %s' % self.slice_names[self.ind])
-        self.ax.set_xlabel(self.axes_names[0])
-        self.ax.set_ylabel(self.axes_names[1])
+        img = self.frames[self.ind]
+        self.ax.imshow(img.T, **self.img_kwargs)
+        self.ax.set_title('%s' % self.frame_names[self.ind])
+        self.ax.set_xlabel('x')
+        self.ax.set_ylabel('y')
         self.ax.set_aspect('auto')
-        self.ax.set_xlim([0, self.im.shape[1]])
-        self.ax.set_ylim([self.im.shape[0], 0])
-        if self.pts is not None:
-            for arr in self.pts:
-                arr = arr[arr[:, -1] == self.ind]
-                if len(arr) == 0:
-                    continue
-                self.ax.scatter(arr[:, 1], arr[:, 0], alpha=0.005)
+        self.ax.set_xlim([0, img.shape[1]])
+        self.ax.set_ylim([img.shape[0], 0])
 
 
 class Layouts:

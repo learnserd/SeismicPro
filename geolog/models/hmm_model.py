@@ -5,15 +5,16 @@ import dill
 from batchflow.batchflow.models.base import BaseModel
 
 def make_hmm_data(batch, model, components):
-    """Docstring."""
+    """Prepare hmm input."""
     _ = model
     if isinstance(components, str):
-        components = [components]
-    src = [getattr(batch, comp) for comp in components]
-    x = np.hstack([np.concatenate([np.concatenate(np.atleast_3d(arr)) for arr in comp])
-                   for comp in src])
-    lengths = np.concatenate([[len(arr[0])] * len(arr) for arr in src[0]])
-    return {"x": x, "lengths": lengths, "shapes": np.array([len(arr) for arr in src[0]])}
+        components = (components, )
+    x = np.hstack([np.concatenate([np.concatenate(np.atleast_3d(arr)) for arr in getattr(batch, comp)])
+                   for comp in components])
+    lengths = np.concatenate([[len(arr[0])] * len(arr) for arr in
+                              getattr(batch, components[0])])
+    shapes = np.array([len(arr) for arr in getattr(batch, components[0])])
+    return {"x": x, "lengths": lengths, "shapes": shapes}
 
 
 class HMModel(BaseModel):

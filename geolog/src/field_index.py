@@ -1,4 +1,4 @@
-"""Docstring."""
+"""Index for SeismicBatch."""
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
@@ -13,7 +13,7 @@ FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
 
 def get_phi(dfr, dfs):
-    """Docstring."""
+    """Get median inclination for R and S lines."""
     incl = []
     for _, group in dfs.groupby('sline'):
         x, y = group[['x', 'y']].values.T
@@ -32,7 +32,7 @@ def get_phi(dfr, dfs):
     return np.median(np.arctan(incl) % (np.pi / 2))
 
 def random_bins_shift(pts, bin_size, iters):
-    """Docstring."""
+    """Monte-Carlo best shift estimation."""
     t = np.max(pts, axis=0).reshape((-1, 1))
     min_unif = np.inf
     best_shift = np.zeros(pts.ndim)
@@ -52,7 +52,7 @@ def random_bins_shift(pts, bin_size, iters):
     return best_shift
 
 def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
-    """Docstring."""
+    """Iterative best shift estimation."""
     t = np.max(pts, axis=0).reshape((-1, 1))
     shift = np.zeros(pts.ndim)
     states = []
@@ -91,14 +91,14 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
     return shift
 
 def rot_2d(arr, phi):
-    """Docstring."""
+    """Rotate vector."""
     c, s = np.cos(phi), np.sin(phi)
     rotm = np.array([[c, -s], [s, c]])
     return np.dot(rotm, arr.T).T
 
 
 def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
-    """Docstring."""
+    """Get bins for 1d seismic."""
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
@@ -167,7 +167,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     return dfm, meta
 
 def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
-    """Docstring."""
+    """Get bins for 2d seismic."""
     if bin_size[0] != bin_size[1]:
         raise ValueError('Bins are not square')
     bin_size = bin_size[0]
@@ -227,7 +227,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     return dfm, meta
 
 def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
-    """Docstring."""
+    """Get bins for seismic."""
     if isinstance(bin_size, (list, tuple, np.ndarray)):
         df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
     else:
@@ -236,7 +236,7 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
     return df, meta
 
 def make_sps_index(dfr, dfs, dfx):
-    """Docstring."""
+    """Index traces according to SPS data."""
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
@@ -262,7 +262,7 @@ def make_sps_index(dfr, dfs, dfx):
     return dfm
 
 def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
-    """Docstring."""
+    """Index traces according to SEGY data."""
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
         if extra_headers == 'all':
@@ -283,14 +283,14 @@ def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
 
 
 class DataFrameIndex(DatasetIndex):
-    """Docstring."""
+    """Base index class."""
     def __init__(self, *args, **kwargs):
         self._idf = None
         self.meta = {}
         super().__init__(*args, **kwargs)
 
     def merge(self, x, **kwargs):
-        """Docstring."""
+        """Merge two DataFrameIndex on common columns."""
         idf = self._idf # pylint: disable=protected-access
         xdf = x._idf # pylint: disable=protected-access
         inames = idf.index.names[0]
@@ -309,28 +309,24 @@ class DataFrameIndex(DatasetIndex):
         return self
 
     def shuffle(self):
+        """Create subset from permuted indices."""
         return self.create_subset(np.random.permutation(self.index))
 
-    def append(self, x):
-        """Docstring."""
-        self._idf = self._idf.append(x._idf) # pylint: disable=protected-access
-        return self
-
     def build_from_index(self, index, idf):
-        """ Build index from another index for indices given. """
+        """Build index from another index for indices given."""
         self._idf = idf.loc[index]
         return index
 
     def create_subset(self, index):
-        """ Return a new FieldIndex based on the subset of indices given. """
+        """Return a new FieldIndex based on the subset of indices given."""
         return type(self).from_index(index=index, idf=self._idf)
 
 
 class SegyFilesIndex(DataFrameIndex):
-    """Docstring."""
+    """Index segy files."""
     def build_index(self, index=None, idf=None, name=None,
                     extra_headers=None, drop_duplicates=False, **kwargs):
-        """ Build index. """
+        """Build index of segy files."""
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
@@ -356,9 +352,9 @@ class SegyFilesIndex(DataFrameIndex):
 
 
 class TraceIndex(DataFrameIndex):
-    """Docstring."""
+    """Index traces."""
     def build_index(self, index=None, idf=None, **kwargs):
-        """ Build index. """
+        """Build index for traces."""
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
@@ -377,9 +373,9 @@ class TraceIndex(DataFrameIndex):
 
 
 class FieldIndex(DataFrameIndex):
-    """Docstring."""
+    """Index field records."""
     def build_index(self, index=None, idf=None, **kwargs):
-        """ Build index. """
+        """Build index of field records."""
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
@@ -399,9 +395,9 @@ class FieldIndex(DataFrameIndex):
 
 
 class BinsIndex(DataFrameIndex):
-    """Docstring."""
+    """Index bins of CDP."""
     def build_index(self, index=None, idf=None, **kwargs):
-        """ Build index. """
+        """Build index for bins."""
         if index is not None:
             if idf is not None:
                 return self.build_from_index(index, idf)
@@ -419,7 +415,7 @@ class BinsIndex(DataFrameIndex):
         return self._idf.index.unique().sort_values()
 
     def show_heatmap(self, **kwargs):
-        """Docstring."""
+        """2d histogram of CDP distribution between bins."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
             show_2d_heatmap(self._idf, **kwargs)
