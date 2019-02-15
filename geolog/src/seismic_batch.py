@@ -156,7 +156,7 @@ class SeismicBatch(Batch):
         for comp in dst:
             if not hasattr(self, comp):
                 setattr(self, comp, np.array([None] * len(self.index)))
-        return self.indices        
+        return self.indices
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
@@ -642,7 +642,7 @@ class SeismicBatch(Batch):
             plt.figure(figsize=figsize)
 
         plt.imshow(traces.T, **kwargs)
-        plt.xlabel('Samples')
+        plt.ylabel('Samples')
         plt.axis('auto')
         if save_to is not None:
             plt.savefig(save_to, dpi=dpi)
