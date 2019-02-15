@@ -63,11 +63,23 @@ TEMPLATE_DOCSTRING = """
 TEMPLATE_DOCSTRING = dedent(TEMPLATE_DOCSTRING).strip()
 
 def apply_to_each_component(method):
-    """Docstring."""
+    """Combine list of src items and list dst items into pairs of src and dst items
+    and apply the method to each pair.
+
+    Parameters
+    ----------
+    method : callable
+        Method to be decorated.
+
+    Returns
+    -------
+    decorator : callable
+        Decorated method.
+    """
     def decorator(self, *args, **kwargs):
-        """Docstring."""
+        """Returned decorator."""
         src = kwargs.pop('src')
-        dst = kwargs.pop('dst') if 'dst' in kwargs.keys() else src
+        dst = kwargs.pop('dst')
         if isinstance(src, str):
             src = (src, )
         if isinstance(dst, str):
@@ -110,7 +122,22 @@ def add_actions(actions_dict, template_docstring):
 
 @add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
-    """Docstring."""
+    """Batch class for seimsic data. Contains seismic traces, metadata and processing methods.
+
+    Parameters
+    ----------
+    index : DataFrameIndex
+        Unique identifiers for sets of seismic traces.
+    preloaded : tuple, optional
+        Data to put in the batch if given. Defaults to ``None``.
+
+    Attributes
+    ----------
+    index : DataFrameIndex
+        Unique identifiers for sets of seismic traces.
+    meta : 1-D ndarray
+        Array of dicts with metadata about batch items.
+    """
     components = 'meta',
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
@@ -262,7 +289,7 @@ class SeismicBatch(Batch):
         getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
-    @inbatch_parallel(init="indices", target="threads")    
+    @inbatch_parallel(init="_init_component", target="threads")    
     @apply_to_each_component
     def to_2d(self, index, src, dst, length_alingment=None):
         """Put array of traces to 2d array.
@@ -363,10 +390,14 @@ class SeismicBatch(Batch):
 
         return self
 
-    def _dump_single_segy(self, path, src):
+    def _dump_single_segy(self, path, src, samples):
         """Dump data to segy file."""
+        sort_by = self.meta[0]['sorting']
+        if sort_by is not None:
+            self.sort_traces(src=src, dst=src, sort_by='TRACE_SEQUENCE_FILE')
+
         trace_index = TraceIndex(self.index)
-        data = getattr(self, src)
+        data = np.vstack(getattr(self, src))
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
@@ -382,6 +413,9 @@ class SeismicBatch(Batch):
             for i, x in enumerate(file.header[:]):
                 meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
                 x.update(meta[i])
+
+        if sort_by is not None:
+            self.sort_traces(src=src, dst=src, sort_by=sort_by)
 
         return self
 
@@ -402,7 +436,6 @@ class SeismicBatch(Batch):
             Unchanged batch.
         """
         segy_index = SegyFilesIndex(self.index, name=component)
-
         df = segy_index._idf.reset_index() # pylint: disable=protected-access
         spec = segyio.spec()
         spec.sorting = None
@@ -516,7 +549,7 @@ class SeismicBatch(Batch):
             tslice = slice(None)
         with segyio.open(path, strict=False) as segyfile:
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
-                                    np.atleast_1d(trace_seq)])
+                                    np.atleast_1d(trace_seq).astype(int)])
             samples = segyfile.samples[tslice]
 
         getattr(self, dst)[pos] = traces

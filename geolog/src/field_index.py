@@ -289,6 +289,18 @@ class DataFrameIndex(DatasetIndex):
         self.meta = {}
         super().__init__(*args, **kwargs)
 
+    def __str__(self):
+        """String representation of the index DataFrame."""
+        return print(self._idf)
+
+    def head(self, *args, **kwargs):
+        """Return the first n rows of the index DataFrame."""
+        return self._idf.head(*args, **kwargs)
+
+    def tail(self, *args, **kwargs):
+        """Return the last n rows of the index DataFrame."""
+        return self._idf.tail(*args, **kwargs)
+
     def merge(self, x, **kwargs):
         """Merge two DataFrameIndex on common columns."""
         idf = self._idf # pylint: disable=protected-access
