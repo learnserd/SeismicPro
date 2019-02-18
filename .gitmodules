@@ -1,0 +1,3 @@
+[submodule "batchflow"]
+	path = batchflow
+	url = http://github.com/analysiscenter/batchflow.git

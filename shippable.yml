@@ -12,7 +12,7 @@ build:
     image_tag: $TAG
   ci:
     - pip3 install -U pylint
-    - find ./ -not -path "./dataset/*" -iname "*.py" | xargs -r pylint3 -rn --rcfile pylintrc
+    - find ./ -not -path "./batchflow/*" -iname "*.py" | xargs -r pylint -rn --rcfile pylintrc
 
 integrations:
   hub:
