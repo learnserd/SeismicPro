@@ -415,7 +415,7 @@ class BinsIndex(DataFrameIndex):
                 return self.build_from_index(index, idf)
             if 'bin_id' not in self._idf.columns.tolist():
                 index = type(self)(**kwargs)
-                self = self.merge(index, how='outer')
+                self.merge(index, how='outer')
 
             self._idf.set_index('bin_id', inplace=True)
             self.meta.update(dict(bin_size=kwargs['bin_size']))

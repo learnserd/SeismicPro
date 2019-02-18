@@ -134,7 +134,7 @@ class SeismicBatch(Batch):
     meta : 1-D ndarray
         Array of dicts with metadata about batch items.
     """
-    components = 'meta',
+    components = ('meta', )
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
         if preloaded is None:
@@ -350,8 +350,7 @@ class SeismicBatch(Batch):
         """
         if split:
             return self._dump_splitted_segy(path, src, samples)
-        else:
-            return self._dump_single_segy(path, src, samples)
+        return self._dump_single_segy(path, src, samples)
 
     @inbatch_parallel(init="indices", target="threads")
     def _dump_splitted_segy(self, index, path, src, samples=None):
@@ -545,7 +544,7 @@ class SeismicBatch(Batch):
             tslice = slice(None)
         with segyio.open(path, strict=False) as segyfile:
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
-                                    np.atleast_1d(trace_seq)])
+                                    np.atleast_1d(trace_seq).astype(int)])
 
         getattr(self, dst)[pos] = traces
         self.meta[pos] = dict(sorting=None)
@@ -638,6 +637,7 @@ class SeismicBatch(Batch):
             plt.figure(figsize=figsize)
 
         plt.imshow(traces.T, **kwargs)
+        plt.title(index)
         plt.ylabel('Samples')
         plt.axis('auto')
         if save_to is not None:
