@@ -545,7 +545,7 @@ class SeismicBatch(Batch):
             tslice = slice(None)
         with segyio.open(path, strict=False) as segyfile:
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
-                                    np.atleast_1d(trace_seq).astype(int)])
+                                    np.atleast_1d(trace_seq)])
 
         getattr(self, dst)[pos] = traces
         self.meta[pos] = dict(sorting=None)
