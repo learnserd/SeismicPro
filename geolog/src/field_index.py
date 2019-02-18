@@ -266,7 +266,7 @@ def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
         if extra_headers == 'all':
-            headers = file.header[0].keys()
+            headers = segyfile.header[0].keys()
         elif extra_headers is None:
             headers = DEFAULT_SEGY_HEADERS
         else:

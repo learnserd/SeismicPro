@@ -1,5 +1,4 @@
 """Seismic batch."""
-import glob
 import os
 from textwrap import dedent
 import numpy as np
@@ -9,13 +8,10 @@ from scipy import signal
 import pywt
 import segyio
 
-from batchflow import (action, inbatch_parallel, Batch,
-                       DatasetIndex,
-                       ImagesBatch, any_action_failed)
+from batchflow import action, inbatch_parallel, Batch
 
-from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS, DEFAULT_SEGY_HEADERS
+from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod
-from .batch_tools import nj_sample_crops, pts_to_indices
 
 
 ACTIONS_DICT = {
@@ -78,14 +74,14 @@ def apply_to_each_component(method):
     """
     def decorator(self, *args, **kwargs):
         """Returned decorator."""
-        src = kwargs.pop('src')
-        dst = kwargs.pop('dst')
-        if isinstance(src, str):
-            src = (src, )
-        if isinstance(dst, str):
-            dst = (dst, )
-        for sc, dc in list(zip(src, dst)):
-            kwargs.update(dict(src=sc, dst=dc))
+        src_list = kwargs.pop('src')
+        dst_list = kwargs.pop('dst')
+        if isinstance(src_list, str):
+            src_list = (src_list, )
+        if isinstance(dst_list, str):
+            dst_list = (dst_list, )
+        for src, dst in list(zip(src_list, dst_list)):
+            kwargs.update(dict(src=src, dst=dst))
             method(self, *args, **kwargs)
         return self
     return decorator
@@ -289,7 +285,7 @@ class SeismicBatch(Batch):
         getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
-    @inbatch_parallel(init="_init_component", target="threads")    
+    @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
     def to_2d(self, index, src, dst, length_alingment=None):
         """Put array of traces to 2d array.
@@ -372,7 +368,7 @@ class SeismicBatch(Batch):
         spec.samples = np.arange(len(data[0])) if samples is None else samples
         spec.tracecount = len(data)
         sort_by = self.meta[pos]['sorting']
-        df = self.index._idf.loc[[index]].reset_index(drop=isinstance(self.index, TraceIndex))
+        df = self.index._idf.loc[[index]].reset_index(drop=isinstance(self.index, TraceIndex)) # pylint: disable=protected-access
         if sort_by is not None:
             df = (df.sort_values(by=sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
                                  (sort_by, src))
@@ -533,7 +529,7 @@ class SeismicBatch(Batch):
 
         setattr(self, dst, res)
         idf.drop('_pos', axis=1, inplace=True)
-        self.index._idf.columns = pd.MultiIndex.from_arrays([idf.columns.get_level_values(0),
+        self.index._idf.columns = pd.MultiIndex.from_arrays([idf.columns.get_level_values(0), # pylint: disable=protected-access
                                                              idf.columns.get_level_values(1)])
 
         return self
@@ -550,7 +546,6 @@ class SeismicBatch(Batch):
         with segyio.open(path, strict=False) as segyfile:
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
                                     np.atleast_1d(trace_seq).astype(int)])
-            samples = segyfile.samples[tslice]
 
         getattr(self, dst)[pos] = traces
         self.meta[pos] = dict(sorting=None)
@@ -611,7 +606,8 @@ class SeismicBatch(Batch):
         fig, tracker
         """
         fig, ax = plt.subplots(1, 1)
-        tracker = IndexTracker(ax, getattr(self, src), self.indices, scroll_step=1, **kwargs)
+        tracker = IndexTracker(ax, getattr(self, src), self.indices,
+                               scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
     def show_traces(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
