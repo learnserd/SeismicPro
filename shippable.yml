@@ -11,6 +11,7 @@ build:
     image_name: $DOCKER_ACC/$DOCKER_REPO
     image_tag: $TAG
   ci:
+    - pip3 list | grep pandas
     - pip3 install pandas==0.22.0
     - find ./ -not -path "./batchflow/*" -iname "*.py" | xargs -r pylint -rn --rcfile pylintrc
 
