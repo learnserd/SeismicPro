@@ -11,8 +11,8 @@ build:
     image_name: $DOCKER_ACC/$DOCKER_REPO
     image_tag: $TAG
   ci:
-    - pip3 install -U pylint
-    - find ./ -not -path "./batchflow/*" -iname "*.py" | xargs -r pylint -rn --rcfile pylintrc
+    - pip3 install -U astroid
+    - find ./ -not -path "./batchflow/*" -iname "*.py" | xargs -r pylint --rcfile pylintrc
 
 integrations:
   hub:
