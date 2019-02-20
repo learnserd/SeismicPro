@@ -417,7 +417,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def merge_segy_files(self, component, path, samples):
+    def merge_segy_files(self, component, path):
         """Merge all indexed segy filed into single segy file.
 
         Parameters
@@ -437,15 +437,17 @@ class SeismicBatch(Batch):
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
-        spec.samples = samples
         spec.tracecount = len(df)
+        with segyio.open(segy_index.indices[0], strict=False) as file:
+            spec.samples = file.samples
+
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         df = df[headers]
         df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
         with segyio.create(path, spec) as file:
             i = 0
             for index in segy_index.indices:
-                batch = (type(self)(segy_index.create_subset([index]))
+                batch = (segy_index.create_subset([index])
                          .load(components=component, sort_by='TRACE_SEQUENCE_FILE'))
                 data = np.array([t for item in getattr(batch, component) for t in item])
                 file.trace[i: i + len(data)] = data
