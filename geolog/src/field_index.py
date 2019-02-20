@@ -313,7 +313,7 @@ class DataFrameIndex(DatasetIndex):
                           .intersection(xdf.columns.get_level_values(0)))
             self._idf = idf.merge(xdf, on=common, **kwargs)
         else:
-            self._idf = idf.merge(xdf, how='outer', **kwargs)
+            self._idf = idf.merge(xdf, **kwargs)
 
         if inames is not None:
             self._idf.set_index(inames, inplace=True)
@@ -405,6 +405,45 @@ class FieldIndex(DataFrameIndex):
         self._idf = df
         return self._idf.index.unique().sort_values()
 
+class IlineIndex(DataFrameIndex):
+    """Index field records."""
+    def build_index(self, index=None, idf=None, **kwargs):
+        """Build index of field records."""
+        if index is not None:
+            if idf is not None:
+                return self.build_from_index(index, idf)
+            idf = index._idf # pylint: disable=protected-access
+            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
+                         .set_index('INLINE_3D'))
+            self.meta.update(index.meta)
+            return self._idf.index.unique().sort_values()
+
+        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
+        kwargs['extra_headers'] = list(set(extra_headers + ['INLINE_3D', 'CROSSLINE_3D']))
+        df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
+
+        self._idf = df
+        return self._idf.index.unique().sort_values()
+
+class XlineIndex(DataFrameIndex):
+    """Index field records."""
+    def build_index(self, index=None, idf=None, **kwargs):
+        """Build index of field records."""
+        if index is not None:
+            if idf is not None:
+                return self.build_from_index(index, idf)
+            idf = index._idf # pylint: disable=protected-access
+            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
+                         .set_index('CROSSLINE_3D'))
+            self.meta.update(index.meta)
+            return self._idf.index.unique().sort_values()
+
+        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
+        kwargs['extra_headers'] = list(set(extra_headers + ['INLINE_3D', 'CROSSLINE_3D']))
+        df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
+
+        self._idf = df
+        return self._idf.index.unique().sort_values()
 
 class BinsIndex(DataFrameIndex):
     """Index bins of CDP."""
