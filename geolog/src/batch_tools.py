@@ -1,53 +1,10 @@
-"""Seismic batch."""
+"""Seismic batch tools."""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from numba import njit
 from sklearn.preprocessing import MinMaxScaler
 
-
-def get_pts(batch, grid, i, batch_size):
-    """Docstring."""
-    _ = batch
-    pts = grid[i * batch_size: (i + 1) * batch_size]
-    if len(pts) == 0:
-        raise StopIteration
-    return pts
-
-def show_cube(traces, clip_value, strides=10):
-    """Docstring."""
-    scaler = MinMaxScaler()
-    cube = np.clip(traces, -clip_value, clip_value)
-
-    scaler.fit(cube.reshape((-1, 1)))
-    cube = scaler.transform(cube.reshape((-1, 1))).reshape(cube.shape)
-
-    ax = plt.gca(projection='3d')
-    x, y = np.mgrid[0:cube.shape[0], 0:cube.shape[1]]
-    ax.plot_surface(x, y, np.zeros_like(x) + cube.shape[2],
-                    facecolors=np.repeat(cube[:, :, -1:], 3, axis=-1),
-                    rstride=strides, cstride=strides)
-
-    y, z = np.mgrid[0:cube.shape[1], 0:cube.shape[2]]
-    ax.plot_surface(np.zeros_like(y) + 0, y, z,
-                    facecolors=np.transpose(np.repeat(cube[:1, :, :], 3, axis=0), (1, 2, 0)),
-                    rstride=strides, cstride=strides)
-
-    x, z = np.mgrid[0:cube.shape[0], 0:cube.shape[2]]
-    ax.plot_surface(x, np.zeros_like(x) + cube.shape[1], z,
-                    facecolors=np.transpose(np.repeat(cube[:, -1:, :], 3, axis=1), (0, 2, 1)),
-                    rstride=strides, cstride=strides)
-
-    ax.plot([0, cube.shape[0]], [cube.shape[1], cube.shape[1]],
-            [cube.shape[2], cube.shape[2]], c="w")
-    ax.plot([0, 0], [0, cube.shape[1]], [cube.shape[2], cube.shape[2]], c="w")
-    ax.plot([0, 0], [cube.shape[1], cube.shape[1]], [0, cube.shape[2]], c="w")
-
-    ax.set_zlim([cube.shape[2], 0])
-    ax.set_xlabel("i-lines")
-    ax.set_ylabel("x-lines")
-    ax.set_zlabel("samples")
-    plt.show()
 
 def show_1d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     """Docstring."""
@@ -121,11 +78,3 @@ def nj_sample_crops(traces, pts, size):
             traces[t_start[0]: t_stop[0], t_start[1]: t_stop[1], t_start[2]: t_stop[2]]
 
     return res
-
-def pts_to_indices(pts, meta):
-    """Docstring."""
-    starts = np.array([meta['ilines'][0], meta['xlines'][0], meta['samples'][0]])
-    steps = np.array([meta['ilines'][1] - meta['ilines'][0],
-                      meta['xlines'][1] - meta['xlines'][0],
-                      meta['samples'][1] - meta['samples'][0]])
-    return ((pts - starts) / steps).astype(int)
