@@ -447,7 +447,7 @@ class SeismicBatch(Batch):
         with segyio.create(path, spec) as file:
             i = 0
             for index in segy_index.indices:
-                batch = (segy_index.create_subset([index])
+                batch = (type(self)(segy_index.create_subset([index]))
                          .load(components=component, sort_by='TRACE_SEQUENCE_FILE'))
                 data = np.array([t for item in getattr(batch, component) for t in item])
                 file.trace[i: i + len(data)] = data
@@ -596,7 +596,7 @@ class SeismicBatch(Batch):
         self.meta[dst]['sorting'] = sort_by
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
-        """View and scroll batch items.
+        """Scroll and view batch items.
 
         Parameters
         ----------

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 
 class IndexTracker:
-    """Provides an onscroll and update methods for matplotlib scroll_event."""
+    """Provides onscroll and update methods for matplotlib scroll_event."""
     def __init__(self, ax, frames, frame_names, scroll_step=1, **kwargs):
         self.ax = ax
         self.frames = frames

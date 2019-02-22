@@ -284,9 +284,10 @@ def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
 
 class DataFrameIndex(DatasetIndex):
     """Base index class."""
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, index_name=None, **kwargs):
         self._idf = None
         self.meta = {}
+        self.index_name = index_name
         super().__init__(*args, **kwargs)
 
     def __str__(self):
@@ -300,6 +301,25 @@ class DataFrameIndex(DatasetIndex):
     def tail(self, *args, **kwargs):
         """Return the last n rows of the index DataFrame."""
         return self._idf.tail(*args, **kwargs)
+
+    def build_index(self, index=None, idf=None, **kwargs):
+        """Build index."""
+        if index is not None:
+            if idf is not None:
+                return self.build_from_index(index, idf)
+            idf = index._idf # pylint: disable=protected-access
+            idf = idf.reset_index(drop=(idf.index.names[0] is None))
+            if self.index_name is not None:
+                idf.set_index(self.index_name, inplace=True)
+            self._idf = idf
+            return self._idf.index.unique().sort_values()#.values
+
+        self._idf = self.build_df(**kwargs)
+        return  self._idf.index.unique().sort_values()#.values
+
+    def build_df(self, **kwargs):
+        """Build dataframe."""
+        raise NotImplementedError("build_df should be defined in child classes")
 
     def merge(self, x, **kwargs):
         """Merge two DataFrameIndex on common columns."""
@@ -336,21 +356,15 @@ class DataFrameIndex(DatasetIndex):
 
 class SegyFilesIndex(DataFrameIndex):
     """Index segy files."""
-    def build_index(self, index=None, idf=None, name=None,
-                    extra_headers=None, drop_duplicates=False, **kwargs):
-        """Build index of segy files."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            if kwargs:
-                segy_index = type(self)(name=name, extra_headers=extra_headers,
-                                        drop_duplicates=drop_duplicates, **kwargs)
-                index = segy_index.merge(index)
-            idf = index._idf # pylint: disable=protected-access
-            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index(('file_id', name)))
-            return self._idf.index.unique().sort_values()
+    def __init__(self, *args, **kwargs):
+        if 'name' in kwargs.keys():
+            index_name = ('file_id', kwargs['name'])
+        else:
+            index_name = ('file_id', None)
+        super().__init__(*args, index_name=index_name, **kwargs)
 
+    def build_df(self, extra_headers=None, drop_duplicates=False, name=None, **kwargs):
+        """Build dataframe."""
         index = FilesIndex(**kwargs)
         df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, drop_duplicates) for
                         i in sorted(index.indices)])
@@ -359,111 +373,55 @@ class SegyFilesIndex(DataFrameIndex):
         df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                                 [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
         df.set_index(('file_id', name), inplace=True)
-        self._idf = df
-        return self._idf.index.unique().sort_values()
+        self.index_name = ('file_id', name)
+        return df
+
+
+class CustomIndex(DataFrameIndex):
+    """Index any segyio.TraceField attribute."""
+    def __init__(self, *args, **kwargs):
+        index_name = kwargs['index_name']
+        if index_name is not None:
+            extra_headers = (kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else [])
+            kwargs['extra_headers'] = list(set(extra_headers + [index_name]))
+        super().__init__(*args, **kwargs)
+
+    def build_df(self, **kwargs):
+        """Build dataframe."""
+        return SegyFilesIndex(**kwargs)._idf.set_index(self.index_name) # pylint: disable=protected-access
 
 
 class TraceIndex(DataFrameIndex):
     """Index traces."""
-    def build_index(self, index=None, idf=None, **kwargs):
-        """Build index for traces."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            idf = index._idf # pylint: disable=protected-access
-            self._idf = idf.reset_index(drop=(idf.index.names[0] is None))
-            self.meta.update(index.meta)
-            return self._idf.index.unique().sort_values()
-
+    def build_df(self, **kwargs):
+        """Build dataframe."""
         if 'dfx' in kwargs.keys():
-            df = make_sps_index(**kwargs)
-        else:
-            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-
-        self._idf = df
-        return self._idf.index.unique().sort_values()
+            return make_sps_index(**kwargs)
+        return type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
 
 class FieldIndex(DataFrameIndex):
     """Index field records."""
-    def build_index(self, index=None, idf=None, **kwargs):
-        """Build index of field records."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            idf = index._idf # pylint: disable=protected-access
-            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index('FieldRecord'))
-            self.meta.update(index.meta)
-            return self._idf.index.unique().sort_values()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, index_name='FieldRecord', **kwargs)
 
+    def build_df(self, **kwargs):
+        """Build dataframe."""
         if 'dfx' in kwargs.keys():
-            df = make_sps_index(**kwargs).set_index('FieldRecord')
-        else:
-            df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
+            return make_sps_index(**kwargs).set_index('FieldRecord')
+        return type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
 
-        self._idf = df
-        return self._idf.index.unique().sort_values()
-
-class IlineIndex(DataFrameIndex):
-    """Index field records."""
-    def build_index(self, index=None, idf=None, **kwargs):
-        """Build index of field records."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            idf = index._idf # pylint: disable=protected-access
-            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index('INLINE_3D'))
-            self.meta.update(index.meta)
-            return self._idf.index.unique().sort_values()
-
-        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
-        kwargs['extra_headers'] = list(set(extra_headers + ['INLINE_3D', 'CROSSLINE_3D']))
-        df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-
-        self._idf = df
-        return self._idf.index.unique().sort_values()
-
-class XlineIndex(DataFrameIndex):
-    """Index field records."""
-    def build_index(self, index=None, idf=None, **kwargs):
-        """Build index of field records."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            idf = index._idf # pylint: disable=protected-access
-            self._idf = (idf.reset_index(drop=(idf.index.names[0] is None))
-                         .set_index('CROSSLINE_3D'))
-            self.meta.update(index.meta)
-            return self._idf.index.unique().sort_values()
-
-        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
-        kwargs['extra_headers'] = list(set(extra_headers + ['INLINE_3D', 'CROSSLINE_3D']))
-        df = type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-
-        self._idf = df
-        return self._idf.index.unique().sort_values()
 
 class BinsIndex(DataFrameIndex):
     """Index bins of CDP."""
-    def build_index(self, index=None, idf=None, **kwargs):
-        """Build index for bins."""
-        if index is not None:
-            if idf is not None:
-                return self.build_from_index(index, idf)
-            if 'bin_id' not in self._idf.columns.tolist():
-                index = type(self)(**kwargs)
-                self.merge(index, how='outer')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, index_name='bin_id', **kwargs)
 
-            self._idf.set_index('bin_id', inplace=True)
-            self.meta.update(dict(bin_size=kwargs['bin_size']))
-            return self._idf.index.unique().sort_values()
-
+    def build_df(self, **kwargs):
+        """Build dataframe."""
         df, meta = make_bin_index(**kwargs)
-        self._idf = df
         self.meta.update(meta)
-        return self._idf.index.unique().sort_values()
+        return df
 
     def show_heatmap(self, **kwargs):
         """2d histogram of CDP distribution between bins."""
