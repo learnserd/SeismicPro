@@ -215,39 +215,6 @@ class SeismicBatch(Batch):
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
-    @action
-    @inbatch_parallel(init="_init_component", target="threads")
-    @apply_to_each_component
-    def shift_traces(self, index, src, dst, shift_src):
-        """Shift all traces by a number of samples.
-
-        Parameters
-        ----------
-        src : str, array-like
-            The batch components to get the data from.
-        dst : str, array-like
-            The batch components to put the result in.
-        lowcut : real, optional
-            Lowcut frequency.
-        highcut : real, optional
-            Highcut frequency.
-        order : int
-            The order of the filter.
-        fs : real
-            Sampling rate.
-
-        Returns
-        -------
-        batch : SeismicBatch
-            Batch with filtered traces.
-        """
-        i = self.get_pos(None, src, index)
-        traces = getattr(self, src)[i]
-        if isinstance(shift_src, str):
-            shifts = getattr(self, shift_src)[i]
-
-        dst_data = np.array([traces[k][max(0, shifts[k]):] for k in range(len(traces))])
-        getattr(self, dst)[i] = dst_data
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
