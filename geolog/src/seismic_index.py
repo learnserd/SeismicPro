@@ -285,9 +285,9 @@ def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
 class DataFrameIndex(DatasetIndex):
     """Base index class."""
     def __init__(self, *args, index_name=None, **kwargs):
-        self._idf = None
         self.meta = {}
-        self.index_name = index_name
+        self._idf = None
+        self._index_name = index_name
         super().__init__(*args, **kwargs)
 
     def __str__(self):
@@ -309,8 +309,8 @@ class DataFrameIndex(DatasetIndex):
                 return self.build_from_index(index, idf)
             idf = index._idf # pylint: disable=protected-access
             idf = idf.reset_index(drop=(idf.index.names[0] is None))
-            if self.index_name is not None:
-                idf.set_index(self.index_name, inplace=True)
+            if self._index_name is not None:
+                idf.set_index(self._index_name, inplace=True)
             self._idf = idf
             return self._idf.index.unique().sort_values()#.values
 
@@ -373,7 +373,7 @@ class SegyFilesIndex(DataFrameIndex):
         df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                                 [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
         df.set_index(('file_id', name), inplace=True)
-        self.index_name = ('file_id', name)
+        self._index_name = ('file_id', name)
         return df
 
 
@@ -388,7 +388,7 @@ class CustomIndex(DataFrameIndex):
 
     def build_df(self, **kwargs):
         """Build dataframe."""
-        return SegyFilesIndex(**kwargs)._idf.set_index(self.index_name) # pylint: disable=protected-access
+        return SegyFilesIndex(**kwargs)._idf.set_index(self._index_name) # pylint: disable=protected-access
 
 
 class TraceIndex(DataFrameIndex):

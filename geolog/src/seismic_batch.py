@@ -10,7 +10,7 @@ import segyio
 
 from batchflow import action, inbatch_parallel, Batch
 
-from .field_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS
+from .seismic_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod
 
 
