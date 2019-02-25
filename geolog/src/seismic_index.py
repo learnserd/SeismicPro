@@ -132,7 +132,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
                 reg = LinearRegression().fit(pts[:, 1:], pts[:, 0])
                 _phi = np.arctan(1. / reg.coef_)[0]
         else:
-            _phi = np.radians(phi[rline])
+            _phi = np.radians(phi[rline]) # pylint: disable=assignment-from-no-return
 
         pts = rot_2d(pts, -_phi)
         ppx, y = pts[:, 0], np.mean(pts[:, 1])
@@ -195,7 +195,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     if phi is None:
         phi = get_phi(dfr, dfs)
     else:
-        phi = np.radians(phi)
+        phi = np.radians(phi) # pylint: disable=assignment-from-no-return
     if phi > 0:
         phi += -np.pi / 2
 
