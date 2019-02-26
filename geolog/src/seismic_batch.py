@@ -400,30 +400,20 @@ class SeismicBatch(Batch):
             Unchanged batch.
         """
         segy_index = SegyFilesIndex(self.index, name=component)
-        df = segy_index._idf.reset_index() # pylint: disable=protected-access
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
-        spec.tracecount = len(df)
+        spec.tracecount = len(self.index._idf)
         with segyio.open(segy_index.indices[0], strict=False) as file:
             spec.samples = file.samples
 
-        headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
-        df = df[headers]
-        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
-        with segyio.create(path, spec) as file:
+        with segyio.create(path, spec) as dst:
             i = 0
             for index in segy_index.indices:
-                batch = (type(self)(segy_index.create_subset([index]))
-                         .load(components=component, sort_by='TRACE_SEQUENCE_FILE'))
-                data = np.array([t for item in getattr(batch, component) for t in item])
-                file.trace[i: i + len(data)] = data
-                meta = df.iloc[i: i + len(data)].to_dict('index')
-                for j, x in enumerate(file.header[i: i + len(data)]):
-                    meta[i + j][segyio.TraceField.TRACE_SEQUENCE_FILE] = i + j
-                    x.update(meta[i + j])
+                with segyio.open(segy_index.indices[0], strict=False) as src:
+                    dst.trace[i: i + src.tracecount] = src.trace
 
-                i += len(data)
+                i += src.tracecount
 
         return self
 
@@ -563,8 +553,15 @@ class SeismicBatch(Batch):
         self.meta[dst]['sorting'] = sort_by
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
-        """Scroll and view batch items.
+        """Scroll and view batch items. Emaple of use:
+        ```
+        %matplotlib notebook
 
+        fig, tracker = batch.items_viewer('raw', vmin=-cv, vmax=cv, cmap='gray')
+        fig.canvas.mpl_connect('scroll_event', tracker.onscroll)
+        plt.show()
+        ```
+    
         Parameters
         ----------
         src : str
