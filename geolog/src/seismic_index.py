@@ -294,6 +294,10 @@ class DataFrameIndex(DatasetIndex):
         """String representation of the index DataFrame."""
         return print(self._idf)
 
+    def shape(self):
+        """Return a shape of the index DataFrame."""
+        return self._idf.shape
+
     def head(self, *args, **kwargs):
         """Return the first n rows of the index DataFrame."""
         return self._idf.head(*args, **kwargs)

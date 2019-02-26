@@ -403,14 +403,14 @@ class SeismicBatch(Batch):
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
-        spec.tracecount = len(self.index._idf)
+        spec.tracecount = self.index.shape()[0]
         with segyio.open(segy_index.indices[0], strict=False) as file:
             spec.samples = file.samples
 
         with segyio.create(path, spec) as dst:
             i = 0
             for index in segy_index.indices:
-                with segyio.open(segy_index.indices[0], strict=False) as src:
+                with segyio.open(index, strict=False) as src:
                     dst.trace[i: i + src.tracecount] = src.trace
 
                 i += src.tracecount
@@ -561,7 +561,7 @@ class SeismicBatch(Batch):
         fig.canvas.mpl_connect('scroll_event', tracker.onscroll)
         plt.show()
         ```
-    
+
         Parameters
         ----------
         src : str
