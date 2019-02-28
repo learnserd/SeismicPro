@@ -316,10 +316,10 @@ class DataFrameIndex(DatasetIndex):
             if self._index_name is not None:
                 idf.set_index(self._index_name, inplace=True)
             self._idf = idf
-            return self._idf.index.unique().sort_values()#.values
+            return self._idf.index.unique().sort_values()
 
         self._idf = self.build_df(**kwargs)
-        return  self._idf.index.unique().sort_values()#.values
+        return self._idf.index.unique().sort_values()
 
     def build_df(self, **kwargs):
         """Build dataframe."""
@@ -329,20 +329,20 @@ class DataFrameIndex(DatasetIndex):
         """Merge two DataFrameIndex on common columns."""
         idf = self._idf # pylint: disable=protected-access
         xdf = x._idf # pylint: disable=protected-access
-        inames = idf.index.names[0]
         idf.reset_index(drop=idf.index.names[0] is None, inplace=True)
         xdf.reset_index(drop=xdf.index.names[0] is None, inplace=True)
         if np.all(idf.columns.get_level_values(1) == '') or np.all(xdf.columns.get_level_values(1) == ''):
             common = list(set(idf.columns.get_level_values(0).tolist())
                           .intersection(xdf.columns.get_level_values(0)))
-            self._idf = idf.merge(xdf, on=common, **kwargs)
+            df = idf.merge(xdf, on=common, **kwargs)
         else:
-            self._idf = idf.merge(xdf, **kwargs)
+            df = idf.merge(xdf, **kwargs)
 
-        if inames is not None:
-            self._idf.set_index(inames, inplace=True)
+        if self._index_name is not None:
+            df.set_index(self._index_name, inplace=True)
 
-        return self
+        return type(self).from_index(index=df.index.unique().sort_values(), idf=df,
+                                     index_name=self._index_name)
 
     def shuffle(self):
         """Create subset from permuted indices."""
@@ -354,8 +354,8 @@ class DataFrameIndex(DatasetIndex):
         return index
 
     def create_subset(self, index):
-        """Return a new FieldIndex based on the subset of indices given."""
-        return type(self).from_index(index=index, idf=self._idf)
+        """Return a new DataFrameIndex based on the subset of indices given."""
+        return type(self).from_index(index=index, idf=self._idf, index_name=self._index_name)
 
 
 class SegyFilesIndex(DataFrameIndex):
@@ -365,7 +365,8 @@ class SegyFilesIndex(DataFrameIndex):
             index_name = ('file_id', kwargs['name'])
         else:
             index_name = ('file_id', None)
-        super().__init__(*args, index_name=index_name, **kwargs)
+        kwargs.update(dict(index_name=index_name))
+        super().__init__(*args, **kwargs)
 
     def build_df(self, extra_headers=None, drop_duplicates=False, name=None, **kwargs):
         """Build dataframe."""
@@ -386,7 +387,7 @@ class CustomIndex(DataFrameIndex):
     def __init__(self, *args, **kwargs):
         index_name = kwargs['index_name']
         if index_name is not None:
-            extra_headers = (kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else [])
+            extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
             kwargs['extra_headers'] = list(set(extra_headers + [index_name]))
         super().__init__(*args, **kwargs)
 
@@ -407,7 +408,8 @@ class TraceIndex(DataFrameIndex):
 class FieldIndex(DataFrameIndex):
     """Index field records."""
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, index_name='FieldRecord', **kwargs)
+        kwargs.update(dict(index_name='FieldRecord'))
+        super().__init__(*args, **kwargs)
 
     def build_df(self, **kwargs):
         """Build dataframe."""
@@ -419,6 +421,7 @@ class FieldIndex(DataFrameIndex):
 class BinsIndex(DataFrameIndex):
     """Index bins of CDP."""
     def __init__(self, *args, **kwargs):
+        kwargs.update(dict(index_name='bin_id'))
         super().__init__(*args, index_name='bin_id', **kwargs)
 
     def build_df(self, **kwargs):
