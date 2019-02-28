@@ -294,6 +294,7 @@ class DataFrameIndex(DatasetIndex):
         """String representation of the index DataFrame."""
         return print(self._idf)
 
+    @property
     def shape(self):
         """Return a shape of the index DataFrame."""
         return self._idf.shape

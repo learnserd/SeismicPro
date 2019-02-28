@@ -403,7 +403,7 @@ class SeismicBatch(Batch):
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
-        spec.tracecount = self.index.shape()[0]
+        spec.tracecount = self.index.shape[0]
         with segyio.open(segy_index.indices[0], strict=False) as file:
             spec.samples = file.samples
 
