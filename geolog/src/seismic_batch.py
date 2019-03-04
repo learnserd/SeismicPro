@@ -462,36 +462,30 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with loaded components.
         """
-        idf = self.index._idf # pylint: disable=protected-access
-        idf['_pos'] = np.arange(len(idf))
-
         segy_index = SegyFilesIndex(self.index, name=src)
-        order = np.hstack([segy_index._idf.loc[i, '_pos'].tolist() for # pylint: disable=protected-access
-                           i in segy_index.indices])
+        idf = segy_index._idf # pylint: disable=protected-access
+        order = np.hstack([np.where(idf.index == i)[0] for i in segy_index.indices])
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
-        all_traces = np.array([t for item in getattr(batch, dst) for t in item])
+        all_traces = np.array([t for item in getattr(batch, dst) for t in item])[np.argsort(order)]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
+        idf = self.index._idf # pylint: disable=protected-access
         if isinstance(self.index, TraceIndex):
-            items = order[[self.get_pos(None, "indices", i) for i in self.indices]]
-            res = all_traces[items]
             self.meta[dst]['sorting'] = None
+            items = [self.get_pos(None, "indices", i) for i in idf.index]
+            res = np.array(list(all_traces[items]) + [None])[:-1]
         else:
+            self.meta[dst]['sorting'] = sort_by
             res = np.array([None] * len(self))
+            keys = idf[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else (sort_by, src)].values
             for i in self.indices:
                 ipos = self.get_pos(None, "indices", i)
-                df = idf.loc[[i]].reset_index()
-                items = order[df.sort_values(by=sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
-                                             (sort_by, src))['_pos'].tolist()]
-                res[ipos] = all_traces[items]
-            self.meta[dst]['sorting'] = sort_by
+                items = np.where(idf.index == i)[0]
+                order = np.argsort(keys[items])
+                res[ipos] = all_traces[items[order]]
 
         setattr(self, dst, res)
-        idf.drop('_pos', axis=1, inplace=True)
-        self.index._idf.columns = pd.MultiIndex.from_arrays([idf.columns.get_level_values(0), # pylint: disable=protected-access
-                                                             idf.columns.get_level_values(1)])
-
         return self
 
     @inbatch_parallel(init="_init_component", target="threads")
