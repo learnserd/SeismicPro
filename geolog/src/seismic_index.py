@@ -426,7 +426,7 @@ class BinsIndex(TraceIndex):
     """Index bins of CDP."""
     def __init__(self, *args, **kwargs):
         kwargs['index_name'] = 'bin_id'
-        super().__init__(*args, index_name='bin_id', **kwargs)
+        super().__init__(*args, **kwargs)
 
     def build_df(self, **kwargs):
         """Build dataframe."""
