@@ -2,7 +2,6 @@
 import os
 from textwrap import dedent
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
@@ -471,7 +470,7 @@ class SeismicBatch(Batch):
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
         idf = self.index._idf # pylint: disable=protected-access
-        if type(self.index) is TraceIndex:
+        if idf.index.name is None:
             self.meta[dst]['sorting'] = None
             items = [self.get_pos(None, "indices", i) for i in idf.index]
             res = np.array(list(all_traces[items]) + [None])[:-1]
