@@ -2,9 +2,10 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import NearestNeighbors
 import segyio
 
-from batchflow import DatasetIndex, FilesIndex
+from ..batchflow import DatasetIndex, FilesIndex
 
 from .batch_tools import show_1d_heatmap, show_2d_heatmap
 
@@ -18,16 +19,14 @@ def get_phi(dfr, dfs):
     for _, group in dfs.groupby('sline'):
         x, y = group[['x', 'y']].values.T
         if np.std(y) > np.std(x):
-            reg = LinearRegression().fit(y.reshape((-1, 1)), x)
-        else:
-            reg = LinearRegression().fit(x.reshape((-1, 1)), y)
+            x, y = y, x
+        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
         incl.append(reg.coef_[0])
     for _, group in dfr.groupby('rline'):
         x, y = group[['x', 'y']].values.T
         if np.std(y) > np.std(x):
-            reg = LinearRegression().fit(y.reshape((-1, 1)), x)
-        else:
-            reg = LinearRegression().fit(x.reshape((-1, 1)), y)
+            x, y = y, x
+        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
         incl.append(reg.coef_[0])
     return np.median(np.arctan(incl) % (np.pi / 2))
 
@@ -41,11 +40,12 @@ def random_bins_shift(pts, bin_size, iters):
         s = bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
         bins = [np.arange(a, b + bin_size, bin_size) for a, b in zip(s + shift, t)]
         if pts.ndim == 2:
-            unif = np.std(np.histogram2d(*pts.T, bins=bins)[0])
+            h = np.histogram2d(*pts.T, bins=bins)[0]
         elif pts.ndim == 1:
-            unif = np.std(np.histogram(pts, bins=bins[0])[0])
+            h = np.histogram(pts, bins=bins[0])[0]
         else:
             raise ValueError("pts should be ndim = 1 or 2.")
+        unif = np.std(h[h > 0])
         if unif < min_unif:
             min_unif = unif
             best_shift = shift
@@ -81,7 +81,7 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
         else:
             raise ValueError("pts should be ndim = 1 or 2.")
         states.append(shift.copy())
-        states_std.append(np.std(h))
+        states_std.append(np.std(h[h > 0]))
         if np.linalg.norm(move) < bin_size * eps:
             break
         shift += move
@@ -95,7 +95,6 @@ def rot_2d(arr, phi):
     c, s = np.cos(phi), np.sin(phi)
     rotm = np.array([[c, -s], [s, c]])
     return np.dot(rotm, arr.T).T
-
 
 def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     """Get bins for 1d seismic."""
@@ -235,12 +234,12 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
     df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
     return df, meta
 
-def make_sps_index(dfr, dfs, dfx):
+def build_sps_df(dfr, dfs, dfx):
     """Index traces according to SPS data."""
     rids = np.hstack([np.arange(s, e + 1) for s, e in
-                      list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
+                      zip(*[dfx['from_receiver'], dfx['to_receiver']])])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
-                          list(zip(*[dfx['from_channel'], dfx['to_channel']]))])
+                          zip(*[dfx['from_channel'], dfx['to_channel']])])
     n_reps = dfx['to_receiver'] - dfx['from_receiver'] + 1
 
     dfx.drop(labels=['from_channel', 'to_channel', 'from_receiver', 'to_receiver'],
@@ -261,28 +260,37 @@ def make_sps_index(dfr, dfs, dfx):
 
     return dfm
 
-def make_segy_index(filename, extra_headers=None, drop_duplicates=False):
+def make_segy_index(filename, extra_headers=None):
     """Index traces according to SEGY data."""
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
         if extra_headers == 'all':
-            headers = segyfile.header[0].keys()
+            headers = [h.__str__() for h in segyio.TraceField.enums()]
         elif extra_headers is None:
             headers = DEFAULT_SEGY_HEADERS
         else:
-            headers = list(set(DEFAULT_SEGY_HEADERS + list(extra_headers)))
+            headers = set(DEFAULT_SEGY_HEADERS + list(extra_headers))
         meta = dict()
         for k in headers:
             meta[k] = segyfile.attributes(getattr(segyio.TraceField, k))[:]
         meta['TRACE_SEQUENCE_FILE'] = np.arange(1, segyfile.tracecount + 1)
         meta['file_id'] = np.repeat(filename, segyfile.tracecount)
     df = pd.DataFrame(meta)
-    if drop_duplicates:
-        df.drop_duplicates(subset=['FieldRecord', 'TraceNumber'], keep='last', inplace=True)
+    return df
+
+def build_segy_df(extra_headers=None, name=None, **kwargs):
+    """Build dataframe."""
+    index = FilesIndex(**kwargs)
+    df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers) for
+                    i in sorted(index.indices)])
+    common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
+    df = df[common_cols + FILE_DEPENDEND_COLUMNS]
+    df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
+                                            [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
 
 
-class DataFrameIndex(DatasetIndex):
+class TraceIndex(DatasetIndex):
     """Base index class."""
     def __init__(self, *args, index_name=None, **kwargs):
         self.meta = {}
@@ -319,12 +327,19 @@ class DataFrameIndex(DatasetIndex):
             self._idf = idf
             return self._idf.index.unique().sort_values()
 
-        self._idf = self.build_df(**kwargs)
+        df = self.build_df(**kwargs)
+        df.reset_index(drop=df.index.name is None, inplace=True)
+        if self._index_name is not None:
+            df.set_index(self._index_name, inplace=True)
+
+        self._idf = df
         return self._idf.index.unique().sort_values()
 
     def build_df(self, **kwargs):
         """Build dataframe."""
-        raise NotImplementedError("build_df should be defined in child classes")
+        if 'dfx' in kwargs.keys():
+            return build_sps_df(**kwargs)
+        return build_segy_df(**kwargs)
 
     def merge(self, x, **kwargs):
         """Merge two DataFrameIndex on common columns."""
@@ -345,9 +360,11 @@ class DataFrameIndex(DatasetIndex):
         return type(self).from_index(index=df.index.unique().sort_values(), idf=df,
                                      index_name=self._index_name)
 
-    def shuffle(self):
-        """Create subset from permuted indices."""
-        return self.create_subset(np.random.permutation(self.index))
+    def drop_duplicates(self, subset=None, keep='first'):
+        """Drop duplicates from DataFrameIndex."""
+        df = self._idf.reset_index().drop_duplicates(subset, keep).set_index(self._index_name)
+        return type(self).from_index(index=df.index.unique().sort_values(), idf=df,
+                                     index_name=self._index_name)
 
     def build_from_index(self, index, idf):
         """Build index from another index for indices given."""
@@ -359,31 +376,14 @@ class DataFrameIndex(DatasetIndex):
         return type(self).from_index(index=index, idf=self._idf, index_name=self._index_name)
 
 
-class SegyFilesIndex(DataFrameIndex):
+class SegyFilesIndex(TraceIndex):
     """Index segy files."""
     def __init__(self, *args, **kwargs):
-        if 'name' in kwargs.keys():
-            index_name = ('file_id', kwargs['name'])
-        else:
-            index_name = ('file_id', None)
-        kwargs.update(dict(index_name=index_name))
+        kwargs['index_name'] = ('file_id', kwargs.get('name'))
         super().__init__(*args, **kwargs)
 
-    def build_df(self, extra_headers=None, drop_duplicates=False, name=None, **kwargs):
-        """Build dataframe."""
-        index = FilesIndex(**kwargs)
-        df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, drop_duplicates) for
-                        i in sorted(index.indices)])
-        common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
-        df = df[common_cols + FILE_DEPENDEND_COLUMNS]
-        df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
-                                                [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
-        df.set_index(('file_id', name), inplace=True)
-        self._index_name = ('file_id', name)
-        return df
 
-
-class CustomIndex(DataFrameIndex):
+class CustomIndex(TraceIndex):
     """Index any segyio.TraceField attribute."""
     def __init__(self, *args, **kwargs):
         index_name = kwargs['index_name']
@@ -392,37 +392,40 @@ class CustomIndex(DataFrameIndex):
             kwargs['extra_headers'] = list(set(extra_headers + [index_name]))
         super().__init__(*args, **kwargs)
 
-    def build_df(self, **kwargs):
-        """Build dataframe."""
-        return SegyFilesIndex(**kwargs)._idf.set_index(self._index_name) # pylint: disable=protected-access
 
-
-class TraceIndex(DataFrameIndex):
-    """Index traces."""
-    def build_df(self, **kwargs):
-        """Build dataframe."""
-        if 'dfx' in kwargs.keys():
-            return make_sps_index(**kwargs)
-        return type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
-
-
-class FieldIndex(DataFrameIndex):
-    """Index field records."""
+class KNNIndex(TraceIndex):
+    """Index of nearest traces."""
     def __init__(self, *args, **kwargs):
-        kwargs.update(dict(index_name='FieldRecord'))
+        kwargs['index_name'] = 'KNN'
         super().__init__(*args, **kwargs)
 
-    def build_df(self, **kwargs):
+    def build_df(self, n_neighbors, **kwargs):
         """Build dataframe."""
-        if 'dfx' in kwargs.keys():
-            return make_sps_index(**kwargs).set_index('FieldRecord')
-        return type(self)(SegyFilesIndex(**kwargs))._idf # pylint: disable=protected-access
+        field_index = FieldIndex(**kwargs)
+        dfs = []
+        for fid in field_index.indices:
+            df = field_index._idf.loc[fid] # pylint: disable=protected-access
+            ofs = df['TraceNumber'].reshape((-1, 1))
+            nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree')
+            _, indices = nbrs.fit(ofs).kneighbors(ofs)
+            dfs.append(df.iloc[np.hstack(indices)])
+        df = pd.concat(dfs).reset_index()
+        indices = np.repeat(np.arange(field_index.shape[0]), n_neighbors)
+        df['KNN'] = indices
+        return df
 
 
-class BinsIndex(DataFrameIndex):
+class FieldIndex(TraceIndex):
+    """Index field records."""
+    def __init__(self, *args, **kwargs):
+        kwargs['index_name'] = 'FieldRecord'
+        super().__init__(*args, **kwargs)
+
+
+class BinsIndex(TraceIndex):
     """Index bins of CDP."""
     def __init__(self, *args, **kwargs):
-        kwargs.update(dict(index_name='bin_id'))
+        kwargs['index_name'] = 'bin_id'
         super().__init__(*args, index_name='bin_id', **kwargs)
 
     def build_df(self, **kwargs):

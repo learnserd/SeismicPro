@@ -8,9 +8,9 @@ from scipy import signal
 import pywt
 import segyio
 
-from batchflow import action, inbatch_parallel, Batch
+from ..batchflow import action, inbatch_parallel, Batch
 
-from .seismic_index import SegyFilesIndex, TraceIndex, DataFrameIndex, FILE_DEPENDEND_COLUMNS
+from .seismic_index import SegyFilesIndex, TraceIndex, FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod
 
 
@@ -437,7 +437,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with loaded components.
         """
-        if isinstance(self.index, DataFrameIndex):
+        if isinstance(self.index, TraceIndex):
             return self._load_segy(src=components, dst=components, **kwargs)
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
@@ -471,7 +471,7 @@ class SeismicBatch(Batch):
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
         idf = self.index._idf # pylint: disable=protected-access
-        if isinstance(self.index, TraceIndex):
+        if type(self.index) is TraceIndex:
             self.meta[dst]['sorting'] = None
             items = [self.get_pos(None, "indices", i) for i in idf.index]
             res = np.array(list(all_traces[items]) + [None])[:-1]
@@ -529,7 +529,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with sorted traces in components.
         """
-        if not isinstance(self.index, DataFrameIndex):
+        if not isinstance(self.index, TraceIndex):
             raise TypeError("Sorting is not supported for this Index.")
 
         pos = self.get_pos(None, "indices", index)
