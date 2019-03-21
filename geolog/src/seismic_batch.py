@@ -36,7 +36,7 @@ ACTIONS_DICT = {
 
 TEMPLATE_DOCSTRING = """
     Compute {description} for each trace.
-    This method simply wraps ``apply_to_trace`` method by setting the
+    This method simply wraps ``apply_along_axis`` method by setting the
     ``func`` argument to ``{full_name}``.
 
     Parameters
@@ -77,11 +77,14 @@ def apply_to_each_component(method):
         dst_list = kwargs.pop('dst')
         if isinstance(src_list, str):
             src_list = (src_list, )
+
         if isinstance(dst_list, str):
             dst_list = (dst_list, )
+
         for src, dst in list(zip(src_list, dst_list)):
             kwargs.update(dict(src=src, dst=dst))
             method(self, *args, **kwargs)
+
         return self
     return decorator
 
@@ -108,9 +111,10 @@ def add_actions(actions_dict, template_docstring):
         """Returned decorator."""
         for method_name, (func, full_name, description) in actions_dict.items():
             docstring = template_docstring.format(full_name=full_name, description=description)
-            method = partialmethod(cls.apply_to_trace, func)
+            method = partialmethod(cls.apply_along_axis, func)
             method.__doc__ = docstring
             setattr(cls, method_name, method)
+
         return cls
     return decorator
 
@@ -146,20 +150,24 @@ class SeismicBatch(Batch):
         dst = kwargs.get("dst")
         if dst is None:
             raise KeyError("dst argument must be specified")
+
         if isinstance(dst, str):
             dst = (dst,)
+
         for comp in dst:
             if not hasattr(self, comp):
                 setattr(self, comp, np.array([None] * len(self.index)))
+
             if comp not in self.meta.keys():
                 self.meta[comp] = dict()
+
         return self.indices
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def apply_to_trace(self, index, func, src, dst, *args, **kwargs):
-        """Same as np.apply_to_trace.
+    def apply_along_axis(self, index, func, src, dst, *args, slice_axis=0, **kwargs):
+        """Apply function along specified axis of batch items.
 
         Parameters
         ----------
@@ -171,6 +179,8 @@ class SeismicBatch(Batch):
             Batch component name to put the result in.
         item_axis : int, default: 0
             Batch item axis to apply ``func`` along.
+        slice_axis : int
+            Axis to iterate data over.
         args : misc
             Any additional positional arguments to ``func``.
         kwargs : misc
@@ -183,7 +193,7 @@ class SeismicBatch(Batch):
         """
         i = self.get_pos(None, src, index)
         src_data = getattr(self, src)[i]
-        dst_data = np.array([func(x, *args, **kwargs) for x in src_data])
+        dst_data = np.array([func(x, *args, **kwargs) for x in np.rollaxis(src_data, slice_axis)])
         getattr(self, dst)[i] = dst_data
 
     @action
@@ -250,13 +260,14 @@ class SeismicBatch(Batch):
             b, a = signal.butter(order, lowcut / nyq, btype='low')
         else:
             b, a = signal.butter(order, [lowcut / nyq, highcut / nyq], btype='band')
+
         getattr(self, dst)[i] = signal.lfilter(b, a, traces)
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def to_2d(self, index, src, dst, length_alingment=None):
-        """Put array of traces to 2d array.
+    def to_2d(self, index, src, dst, length_alignment=None, pad_value=0):
+        """Convert array of 1d arrays to 2d array.
 
         Parameters
         ----------
@@ -264,37 +275,39 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str, array-like
             The batch components to put the result in.
-        length_alingment : str, optional
-            Defines what to di with traces of diffetent lengths.
-            If 'min', all traces will be cutted by minimal trace length.
-            If 'max', all traces will be padded to maximal trace length.
-            If None, tries to put traces to 2d array as is.
+        length_alignment : str, optional
+            Defines what to do with arrays of diffetent lengths.
+            If 'min', all traces will be cutted by minimal array length.
+            If 'max', all traces will be padded to maximal array length.
+            If None, try to put array to 2d array as is.
 
         Returns
         -------
         batch : SeismicBatch
-            Batch with arrays of traces converted to 2d arrays.
+            Batch with items converted to 2d arrays.
         """
-        pos = self.get_pos(None, "indices", index)
-        traces = getattr(self, src)[pos]
-        if traces is None or len(traces) == 0:
+        pos = self.get_pos(None, src, index)
+        data = getattr(self, src)[pos]
+        if data is None or len(data) == 0:
             return
+
         try:
-            traces_2d = np.vstack(traces)
+            data_2d = np.vstack(data)
         except ValueError as err:
-            if length_alingment is None:
+            if length_alignment is None:
                 raise ValueError(str(err) + '\nTry to set length_alingment to \'max\' or \'min\'')
-            elif length_alingment == 'min':
-                nsamples = min([len(t) for t in traces])
-            elif length_alingment == 'max':
-                nsamples = max([len(t) for t in traces])
+            elif length_alignment == 'min':
+                nsamples = min([len(t) for t in data])
+            elif length_alignment == 'max':
+                nsamples = max([len(t) for t in data])
             else:
                 raise NotImplementedError('Unknown length_alingment')
-            shape = (len(traces), nsamples)
-            traces_2d = np.zeros(shape)
-            for i, arr in enumerate(traces):
-                traces_2d[i, :len(arr)] = arr[:nsamples]
-        getattr(self, dst)[pos] = traces_2d
+            shape = (len(data), nsamples)
+            data_2d = np.full(shape, pad_value)
+            for i, arr in enumerate(data):
+                data_2d[i, :len(arr)] = arr[:nsamples]
+
+        getattr(self, dst)[pos] = data_2d
 
     @action
     def dump_segy(self, path, src, split=True):
@@ -318,12 +331,13 @@ class SeismicBatch(Batch):
         """
         if split:
             return self._dump_splitted_segy(path, src)
+
         return self._dump_single_segy(path, src)
 
     @inbatch_parallel(init="indices", target="threads")
     def _dump_splitted_segy(self, index, path, src):
         """Dump data to segy files."""
-        pos = self.get_pos(None, "indices", index)
+        pos = self.get_pos(None, src, index)
         data = getattr(self, src)[pos]
         if isinstance(self.index, TraceIndex):
             data = np.atleast_2d(data)
@@ -438,6 +452,7 @@ class SeismicBatch(Batch):
         """
         if isinstance(self.index, TraceIndex):
             return self._load_segy(src=components, dst=components, **kwargs)
+
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
     @apply_to_each_component
@@ -496,6 +511,7 @@ class SeismicBatch(Batch):
         trace_seq = self.index._idf.loc[index][('TRACE_SEQUENCE_FILE', src)] # pylint: disable=protected-access
         if tslice is None:
             tslice = slice(None)
+
         with segyio.open(path, strict=False) as segyfile:
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
                                     np.atleast_1d(trace_seq).astype(int)])
@@ -505,6 +521,7 @@ class SeismicBatch(Batch):
         if index == self.indices[0]:
             self.meta[dst]['samples'] = samples
             self.meta[dst]['sorting'] = None
+
         return self
 
     @action
@@ -531,7 +548,7 @@ class SeismicBatch(Batch):
         if not isinstance(self.index, TraceIndex):
             raise TypeError("Sorting is not supported for this Index.")
 
-        pos = self.get_pos(None, "indices", index)
+        pos = self.get_pos(None, src, index)
         sorting = self.meta[src]['sorting']
         if sorting == sort_by:
             return
@@ -573,8 +590,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def show_traces(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
-        """Show traces on a 2D regular raster.
+    def imshow(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
+        """Show data on a 2D regular raster.
 
         Parameters
         ----------
@@ -594,16 +611,15 @@ class SeismicBatch(Batch):
         Returns
         -------
         """
-        pos = self.get_pos(None, "indices", index)
-        traces = getattr(self, src)[pos]
-
+        pos = self.get_pos(None, src, index)
+        data = getattr(self, src)[pos]
         if figsize is not None:
             plt.figure(figsize=figsize)
 
-        plt.imshow(traces.T, **kwargs)
+        plt.imshow(data.T, **kwargs)
         plt.title(index)
-        plt.ylabel('Samples')
         plt.axis('auto')
         if save_to is not None:
             plt.savefig(save_to, dpi=dpi)
+
         plt.show()
