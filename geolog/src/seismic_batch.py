@@ -382,7 +382,8 @@ class SeismicBatch(Batch):
         spec.tracecount = len(data)
         df = trace_index._idf # pylint: disable=protected-access
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
-        df = df[headers]
+        segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
+        df = df[segy_headers]
         df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
         with segyio.create(path, spec) as file:
             file.trace = data
