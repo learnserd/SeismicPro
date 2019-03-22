@@ -532,6 +532,63 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
+    def slice_traces(self, index, src, dst, slice_obj):
+        """
+        Slice traces.
+
+        Parameters
+        ----------
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        slice_obj : slice
+            Slice to extract from traces.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with sliced traces.
+        """
+        pos = self.get_pos(None, src, index)
+        data = getattr(self, src)[pos]
+        getattr(self, dst)[pos] = data[:, slice_obj]
+        return self
+
+    @action
+    @inbatch_parallel(init="_init_component", target="threads")
+    @apply_to_each_component
+    def pad_traces(self, index, src, dst, **kwargs):
+        """
+        Pad traces with ```numpy.pad```.
+
+        Parameters
+        ----------
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        kwargs : dict
+            Named arguments to ```numpy.pad```.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with padded traces.
+        """
+        pos = self.get_pos(None, src, index)
+        data = getattr(self, src)[pos]
+        pad_width = kwargs['pad_width']
+        if isinstance(pad_width, int):
+            pad_width = (pad_width, pad_width)
+
+        kwargs['pad_width'] = [(0, 0)] + [pad_width] + [(0, 0)] * (data.ndim - 2)
+        getattr(self, dst)[pos] = np.pad(data, **kwargs)
+        return self
+
+    @action
+    @inbatch_parallel(init="_init_component", target="threads")
+    @apply_to_each_component
     def sort_traces(self, index, src, dst, sort_by):
         """Sort traces.
 
