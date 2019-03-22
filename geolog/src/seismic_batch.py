@@ -456,7 +456,7 @@ class SeismicBatch(Batch):
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
     @apply_to_each_component
-    def _load_segy(self, src, dst, sort_by='TraceNumber', tslice=None):
+    def _load_segy(self, src, dst, sort_by=None, tslice=None):
         """Load data from segy files.
 
         Parameters
@@ -467,7 +467,7 @@ class SeismicBatch(Batch):
             The batch component to put loaded data in.
         sort_by: str, optional
             Sorting order for traces given by header from segyio.TraceField.
-            Default to TraceNumber.
+            Default to None.
         tslice: slice, optional
             Load a trace subset given by slice.
 
@@ -492,12 +492,16 @@ class SeismicBatch(Batch):
         else:
             self.meta[dst]['sorting'] = sort_by
             res = np.array([None] * len(self))
-            keys = idf[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else (sort_by, src)].values
+            if sort_by is not None:
+                keys = idf[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else (sort_by, src)].values
+
             for i in self.indices:
                 ipos = self.get_pos(None, "indices", i)
                 items = np.where(idf.index == i)[0]
-                order = np.argsort(keys[items])
-                res[ipos] = all_traces[items[order]]
+                if sort_by is not None:
+                    items = items[np.argsort(keys[items])]
+
+                res[ipos] = all_traces[items]
 
         setattr(self, dst, res)
         return self
