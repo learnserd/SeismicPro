@@ -401,13 +401,18 @@ class KNNIndex(TraceIndex):
 
     def build_df(self, n_neighbors, **kwargs):
         """Build dataframe."""
+        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
+        kwargs['extra_headers'] = list(set(extra_headers + ['CDP_X', 'CDP_Y']))
         field_index = FieldIndex(**kwargs)
         dfs = []
         for fid in field_index.indices:
             df = field_index._idf.loc[fid] # pylint: disable=protected-access
-            ofs = df['TraceNumber'].reshape((-1, 1))
+            data = np.stack([df['CDP_X'], df['CDP_Y']]).T
             nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree')
-            _, indices = nbrs.fit(ofs).kneighbors(ofs)
+            _, indices = nbrs.fit(data).kneighbors(data)
+            if not np.all(indices[:, 0] == np.arange(len(data))):
+                raise ValueError("Faild to build KNNIndex. Duplicated CDP.")
+
             dfs.append(df.iloc[np.hstack(indices)])
         df = pd.concat(dfs).reset_index()
         indices = np.repeat(np.arange(field_index.shape[0]), n_neighbors)
