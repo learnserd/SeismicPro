@@ -114,15 +114,15 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['x_cdp'] = (dfm['x_s'] + dfm['x_r']) / 2.
-    dfm['y_cdp'] = (dfm['y_s'] + dfm['y_r']) / 2.
-    dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
+    dfm['CDP_X'] = (dfm['x_s'] + dfm['x_r']) / 2.
+    dfm['CDP_Y'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['azimuth'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     dfm['x_index'] = None
     meta = {}
 
     for rline, group in dfm.groupby('rline'):
-        pts = group[['x_cdp', 'y_cdp']].values
+        pts = group[['CDP_X', 'CDP_Y']].values
         if phi is None:
             if np.std(pts[:, 0]) > np.std(pts[:, 1]):
                 reg = LinearRegression().fit(pts[:, :1], pts[:, 1])
@@ -162,6 +162,7 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm.drop(labels=['from_channel', 'to_channel',
                      'from_receiver', 'to_receiver',
                      'x_index'], axis=1, inplace=True)
+    dfm.rename(columns={'x_s': 'SourceX', 'y_s': 'SourceY'}, inplace=True)
 
     return dfm, meta
 
@@ -187,9 +188,9 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
-    dfm['x_cdp'] = (dfm['x_s'] + dfm['x_r']) / 2.
-    dfm['y_cdp'] = (dfm['y_s'] + dfm['y_r']) / 2.
-    dfm['az'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
+    dfm['CDP_X'] = (dfm['x_s'] + dfm['x_r']) / 2.
+    dfm['CDP_Y'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['azimuth'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
 
     if phi is None:
         phi = get_phi(dfr, dfs)
@@ -198,7 +199,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     if phi > 0:
         phi += -np.pi / 2
 
-    pts = rot_2d(dfm[['x_cdp', 'y_cdp']].values, -phi)
+    pts = rot_2d(dfm[['CDP_X', 'CDP_Y']].values, -phi)
 
     if origin is None:
         shift = gradient_bins_shift(pts, bin_size, iters)
@@ -220,6 +221,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
 
     dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver'], axis=1)
+    dfm.rename(columns={'x_s': 'SourceX', 'y_s': 'SourceY'}, inplace=True)
 
     meta = dict(origin=origin, phi=np.rad2deg(phi), bin_size=(bin_size, bin_size))
 
@@ -255,7 +257,11 @@ def build_sps_df(dfr, dfs, dfx):
     dfm = (dfx
            .merge(dfs, on=['sline', 'sid'])
            .merge(dfr, on=['rline', 'rid'], suffixes=('_s', '_r')))
+    dfm['CDP_X'] = (dfm['x_s'] + dfm['x_r']) / 2.
+    dfm['CDP_Y'] = (dfm['y_s'] + dfm['y_r']) / 2.
+    dfm['azimuth'] = np.arctan2(dfm['y_r'] - dfm['y_s'], dfm['x_r'] - dfm['x_s'])
     dfm['offset'] = np.sqrt((dfm['x_s'] - dfm['x_r'])**2 + (dfm['y_s'] - dfm['y_r'])**2) / 2.
+    dfm.rename(columns={'x_s': 'SourceX', 'y_s': 'SourceY'}, inplace=True)
     dfm.columns = pd.MultiIndex.from_arrays([dfm.columns, [''] * len(dfm.columns)])
 
     return dfm
