@@ -8,6 +8,7 @@ import segyio
 from ..batchflow import DatasetIndex, FilesIndex
 
 from .batch_tools import show_1d_heatmap, show_2d_heatmap
+from .utils import line_inclination
 
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
@@ -18,17 +19,11 @@ def get_phi(dfr, dfs):
     incl = []
     for _, group in dfs.groupby('sline'):
         x, y = group[['x', 'y']].values.T
-        if np.std(y) > np.std(x):
-            x, y = y, x
-        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
-        incl.append(reg.coef_[0])
+        incl.append(line_inclination(x, y))
     for _, group in dfr.groupby('rline'):
         x, y = group[['x', 'y']].values.T
-        if np.std(y) > np.std(x):
-            x, y = y, x
-        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
-        incl.append(reg.coef_[0])
-    return np.median(np.arctan(incl) % (np.pi / 2))
+        incl.append(line_inclination(x, y))
+    return np.median(np.array(incl) % (np.pi / 2))
 
 def random_bins_shift(pts, bin_size, iters):
     """Monte-Carlo best shift estimation."""
@@ -309,6 +304,11 @@ class TraceIndex(DatasetIndex):
         return print(self._idf)
 
     @property
+    def name(self):
+        """Return index name."""
+        return self._index_name
+
+    @property
     def shape(self):
         """Return a shape of the index DataFrame."""
         return self._idf.shape
@@ -328,15 +328,15 @@ class TraceIndex(DatasetIndex):
                 return self.build_from_index(index, idf)
             idf = index._idf # pylint: disable=protected-access
             idf = idf.reset_index(drop=(idf.index.names[0] is None))
-            if self._index_name is not None:
-                idf.set_index(self._index_name, inplace=True)
+            if self.name is not None:
+                idf.set_index(self.name, inplace=True)
             self._idf = idf
             return self._idf.index.unique().sort_values()
 
         df = self.build_df(**kwargs)
         df.reset_index(drop=df.index.name is None, inplace=True)
-        if self._index_name is not None:
-            df.set_index(self._index_name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
 
         self._idf = df
         return self._idf.index.unique().sort_values()
@@ -353,24 +353,31 @@ class TraceIndex(DatasetIndex):
         xdf = x._idf # pylint: disable=protected-access
         idf.reset_index(drop=idf.index.names[0] is None, inplace=True)
         xdf.reset_index(drop=xdf.index.names[0] is None, inplace=True)
-        if np.all(idf.columns.get_level_values(1) == '') or np.all(xdf.columns.get_level_values(1) == ''):
-            common = list(set(idf.columns.get_level_values(0).tolist())
-                          .intersection(xdf.columns.get_level_values(0)))
-            df = idf.merge(xdf, on=common, **kwargs)
-        else:
-            df = idf.merge(xdf, **kwargs)
+        df = idf.merge(xdf, **kwargs)
 
-        if self._index_name is not None:
-            df.set_index(self._index_name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
 
         return type(self).from_index(index=df.index.unique().sort_values(), idf=df,
-                                     index_name=self._index_name)
+                                     index_name=self.name)
 
-    def drop_duplicates(self, subset=None, keep='first'):
-        """Drop duplicates from DataFrameIndex."""
-        df = self._idf.reset_index().drop_duplicates(subset, keep).set_index(self._index_name)
-        return type(self).from_index(index=df.index.unique().sort_values(), idf=df,
-                                     index_name=self._index_name)
+    def duplicated(self):
+        """Duplicated ('FieldRecord', 'TraceNumber') pairs."""
+        subset=[('FieldRecord', ''), ('TraceNumber', '')]
+        return self._idf.duplicated(subset=subset)
+
+    def drop_duplicates(self, keep='first'):
+        """Drop duplicates ('FieldRecord', 'TraceNumber') pairs."""
+        subset=[('FieldRecord', ''), ('TraceNumber', '')]
+        df = (self._idf.reset_index(drop=self.name is None)
+              .drop_duplicates(subset=subset, keep=keep)
+              .set_index(self.name))
+        return type(self).from_index(index=df.index.unique().sort_values(), idf=df, index_name=self.name)
+
+    def sort_values(self, sort_by):
+        """Sort rows."""
+        self._idf.sort_values(by=sort_by, inplace=True)
+        return self
 
     def build_from_index(self, index, idf):
         """Build index from another index for indices given."""
@@ -379,7 +386,7 @@ class TraceIndex(DatasetIndex):
 
     def create_subset(self, index):
         """Return a new DataFrameIndex based on the subset of indices given."""
-        return type(self).from_index(index=index, idf=self._idf, index_name=self._index_name)
+        return type(self).from_index(index=index, idf=self._idf, index_name=self.name)
 
 
 class SegyFilesIndex(TraceIndex):

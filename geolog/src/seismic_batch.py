@@ -2,6 +2,7 @@
 import os
 from textwrap import dedent
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
@@ -11,6 +12,8 @@ from ..batchflow import action, inbatch_parallel, Batch
 
 from .seismic_index import SegyFilesIndex, TraceIndex, FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod
+
+PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
 
 
 ACTIONS_DICT = {
@@ -71,19 +74,16 @@ def apply_to_each_component(method):
     decorator : callable
         Decorated method.
     """
-    def decorator(self, *args, **kwargs):
+    def decorator(self, *args, src, dst, **kwargs):
         """Returned decorator."""
-        src_list = kwargs.pop('src')
-        dst_list = kwargs.pop('dst')
-        if isinstance(src_list, str):
-            src_list = (src_list, )
+        if isinstance(src, str):
+            src = (src, )
 
-        if isinstance(dst_list, str):
-            dst_list = (dst_list, )
+        if isinstance(dst, str):
+            dst = (dst, )
 
-        for src, dst in list(zip(src_list, dst_list)):
-            kwargs.update(dict(src=src, dst=dst))
-            method(self, *args, **kwargs)
+        for isrc, idst in list(zip(src, dst)):
+            method(self, *args, src=isrc, dst=idst, **kwargs)
 
         return self
     return decorator
@@ -134,23 +134,18 @@ class SeismicBatch(Batch):
     ----------
     index : DataFrameIndex
         Unique identifiers for sets of seismic traces.
-    meta : 1-D ndarray
-        Array of dicts with metadata about batch items.
+    meta : dict
+        Metadata about batch components.
     """
-    components = ('meta', )
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
         if preloaded is None:
             self.meta = dict()
 
-    def _init_component(self, *args, **kwargs):
+    def _init_component(self, *args, dst, **kwargs):
         """Create and preallocate a new attribute with the name ``dst`` if it
         does not exist and return batch indices."""
         _ = args
-        dst = kwargs.get("dst")
-        if dst is None:
-            raise KeyError("dst argument must be specified")
-
         if isinstance(dst, str):
             dst = (dst,)
 
@@ -158,7 +153,7 @@ class SeismicBatch(Batch):
             if not hasattr(self, comp):
                 setattr(self, comp, np.array([None] * len(self.index)))
 
-            if comp not in self.meta.keys():
+            if comp not in self.meta:
                 self.meta[comp] = dict()
 
         return self.indices
@@ -166,7 +161,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def apply_along_axis(self, index, func, src, dst, *args, slice_axis=0, **kwargs):
+    def apply_along_axis(self, index, func, *args, src, dst, slice_axis=0, **kwargs):
         """Apply function along specified axis of batch items.
 
         Parameters
@@ -198,7 +193,7 @@ class SeismicBatch(Batch):
 
     @action
     @apply_to_each_component
-    def apply_transform(self, func, src, dst, *args, **kwargs):
+    def apply_transform(self, func, *args, src, dst, **kwargs):
         """Apply a function to each item in the batch.
 
         Parameters
@@ -228,7 +223,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def band_pass_filter(self, index, src, dst, lowcut=None, highcut=None, fs=1, order=5):
+    def band_pass_filter(self, index, *args, src, dst, lowcut=None, highcut=None, fs=1, order=5):
         """Apply a band pass filter.
 
         Parameters
@@ -266,7 +261,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def to_2d(self, index, src, dst, length_alignment=None, pad_value=0):
+    def to_2d(self, index, *args, src, dst, length_alignment=None, pad_value=0):
         """Convert array of 1d arrays to 2d array.
 
         Parameters
@@ -277,8 +272,8 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         length_alignment : str, optional
             Defines what to do with arrays of diffetent lengths.
-            If 'min', all traces will be cutted by minimal array length.
-            If 'max', all traces will be padded to maximal array length.
+            If 'min', cut the end by minimal array length.
+            If 'max', pad the end to maximal array length.
             If None, try to put array to 2d array as is.
 
         Returns
@@ -310,7 +305,7 @@ class SeismicBatch(Batch):
         getattr(self, dst)[pos] = data_2d
 
     @action
-    def dump_segy(self, path, src, split=True):
+    def dump_segy(self, src, path, split=True):
         """Dump data to segy files.
 
         Parameters
@@ -319,10 +314,8 @@ class SeismicBatch(Batch):
             Path for output files.
         src : str
             Batch component to dump data from.
-        samples : array-like, optional
-            Sample times for traces.
         split : bool
-            Whether to dump each batch item into a separate file.
+            Whether to dump batch items into separate files.
 
         Returns
         -------
@@ -330,17 +323,15 @@ class SeismicBatch(Batch):
             Unchanged batch.
         """
         if split:
-            return self._dump_splitted_segy(path, src)
+            return self._dump_split_segy(src, path)
 
-        return self._dump_single_segy(path, src)
+        return self._dump_single_segy(src, path)
 
     @inbatch_parallel(init="indices", target="threads")
-    def _dump_splitted_segy(self, index, path, src):
+    def _dump_split_segy(self, index, src, path):
         """Dump data to segy files."""
         pos = self.get_pos(None, src, index)
-        data = getattr(self, src)[pos]
-        if isinstance(self.index, TraceIndex):
-            data = np.atleast_2d(data)
+        data = np.atleast_2d(getattr(self, src)[pos])
 
         path = os.path.join(path, str(index) + '.sgy')
         spec = segyio.spec()
@@ -348,16 +339,12 @@ class SeismicBatch(Batch):
         spec.format = 1
         spec.samples = self.meta[src]['samples']
         spec.tracecount = len(data)
-        sort_by = self.meta[src]['sorting']
-        df = self.index._idf.loc[[index]].reset_index(drop=isinstance(self.index, TraceIndex)) # pylint: disable=protected-access
-        if sort_by is not None:
-            df = (df.sort_values(by=sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
-                                 (sort_by, src))
-                  .reset_index(drop=True))
 
+        df = self.index._idf.loc[[index]].reset_index(drop=self.index.name is None) # pylint: disable=protected-access
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         df = df[headers]
         df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+
         with segyio.create(path, spec) as file:
             file.trace = data
             meta = df.to_dict('index')
@@ -367,33 +354,27 @@ class SeismicBatch(Batch):
 
         return self
 
-    def _dump_single_segy(self, path, src):
+    def _dump_single_segy(self, src, path):
         """Dump data to segy file."""
-        sort_by = self.meta[src]['sorting']
-        if sort_by is not None:
-            self.sort_traces(src=src, dst=src, sort_by='TRACE_SEQUENCE_FILE')
-
-        trace_index = TraceIndex(self.index)
         data = np.vstack(getattr(self, src))
         spec = segyio.spec()
         spec.sorting = None
         spec.format = 1
         spec.samples = self.meta[src]['samples']
         spec.tracecount = len(data)
-        df = trace_index._idf # pylint: disable=protected-access
+
+        df = self.index._idf.reset_index(drop=self.index.name is None) # pylint: disable=protected-access
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
-        df = df[segy_headers]
+        df = df.loc[self.indices, segy_headers]
         df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+
         with segyio.create(path, spec) as file:
             file.trace = data
             meta = df.to_dict('index')
             for i, x in enumerate(file.header[:]):
                 meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
                 x.update(meta[i])
-
-        if sort_by is not None:
-            self.sort_traces(src=src, dst=src, sort_by=sort_by)
 
         return self
 
@@ -432,6 +413,48 @@ class SeismicBatch(Batch):
         return self
 
     @action
+    def dump_picking(self, src, path, to_samples=None, columns=None):
+        """Dump picking to file.
+
+        Parameters
+        ----------
+        src : str
+            Source to get picking from.
+        path : str
+            Output file path.
+        to_samples : str or scalar or array-like, default to None
+            Convertion of the source data interpreted as array of indices to time samples.
+            If string, get time samples from corresponding batch component.
+            If scalar, the value is interpreted as sampling rate.
+            If array-like, the array is interpreted as time samples.
+        columns: array_like, optional
+            Columns to include in the output file. See PICKS_FILE_HEADERS for default format.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch unchanged.
+        """
+        data = np.vstack(getattr(self, src)).ravel()
+        if to_samples is not None:
+            if isinstance(to_samples, str):
+                data = self.meta[to_samples]['samples'][data]
+            elif len(np.atleast_1d(o_samples)) == 1:
+                data = to_samples * data
+            else:
+                data = to_samples[data]
+
+        if columns is None:
+            columns = PICKS_FILE_HEADERS
+
+        df = self.index._idf.loc[self.indices] # pylint: disable=protected-access
+        df['timeOffset'] = data
+        df = df.reset_index(drop=self.index.name is None)[columns]
+        df.columns = df.columns.droplevel(1)
+        df.to_csv(path, index=False)
+        return self
+
+    @action
     def load(self, src=None, fmt=None, components=None, **kwargs):
         """Load data into components.
 
@@ -451,13 +474,31 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with loaded components.
         """
-        if isinstance(self.index, TraceIndex):
+        if fmt.lower() in ['sgy', 'segy']:
             return self._load_segy(src=components, dst=components, **kwargs)
+        if fmt == 'picks':
+            return self._load_picking(src=src, components=components)
 
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
+    def _load_picking(self, src, components):
+        """Load picking from file."""
+        df = pd.read_csv(src)
+        df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
+        idf = self.index._idf # pylint: disable=protected-access
+        if self.index.name is not None:
+            idf = idf.reset_index()
+
+        df = idf.merge(df, how='left')
+        if self.index.name is not None:
+            df = df.set_index(self.index.name)
+
+        res = [df.loc[i, 'timeOffset'].values for i in self.indices]
+        setattr(self, components, res)
+        return self
+        
     @apply_to_each_component
-    def _load_segy(self, src, dst, sort_by=None, tslice=None):
+    def _load_segy(self, src, dst, tslice=None):
         """Load data from segy files.
 
         Parameters
@@ -466,9 +507,6 @@ class SeismicBatch(Batch):
             Component to load.
         dst : str, array-like
             The batch component to put loaded data in.
-        sort_by: str, optional
-            Sorting order for traces given by header from segyio.TraceField.
-            Default to None.
         tslice: slice, optional
             Load a trace subset given by slice.
 
@@ -482,33 +520,27 @@ class SeismicBatch(Batch):
         order = np.hstack([np.where(idf.index == i)[0] for i in segy_index.indices])
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
-        all_traces = np.array([t for item in getattr(batch, dst) for t in item])[np.argsort(order)]
+        all_traces = np.concatenate(getattr(batch, dst))[np.argsort(order)]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
         idf = self.index._idf # pylint: disable=protected-access
         if idf.index.name is None:
-            self.meta[dst]['sorting'] = None
             items = [self.get_pos(None, "indices", i) for i in idf.index]
             res = np.array(list(all_traces[items]) + [None])[:-1]
         else:
-            self.meta[dst]['sorting'] = sort_by
             res = np.array([None] * len(self))
-            if sort_by is not None:
-                keys = idf[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else (sort_by, src)].values
-
             for i in self.indices:
                 ipos = self.get_pos(None, "indices", i)
                 items = np.where(idf.index == i)[0]
-                if sort_by is not None:
-                    items = items[np.argsort(keys[items])]
-
                 res[ipos] = all_traces[items]
 
         setattr(self, dst, res)
+        self.meta[dst]['sorting'] = None
+
         return self
 
     @inbatch_parallel(init="_init_component", target="threads")
-    def _load_from_segy_file(self, index, src, dst, tslice=None):
+    def _load_from_segy_file(self, index, *args, src, dst, tslice=None):
         """Load from a single segy file."""
         _ = src
         pos = self.get_pos(None, "indices", index)
@@ -532,7 +564,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def slice_traces(self, index, src, dst, slice_obj):
+    def slice_traces(self, index, *args, src, dst, slice_obj):
         """
         Slice traces.
 
@@ -558,7 +590,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def pad_traces(self, index, src, dst, **kwargs):
+    def pad_traces(self, index, *args, src, dst, **kwargs):
         """
         Pad traces with ```numpy.pad```.
 
@@ -587,9 +619,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    @inbatch_parallel(init="_init_component", target="threads")
-    @apply_to_each_component
-    def sort_traces(self, index, src, dst, sort_by):
+    def sort_traces(self, *args, src, dst, sort_by):
         """Sort traces.
 
         Parameters
@@ -599,30 +629,27 @@ class SeismicBatch(Batch):
         dst : str, array-like
             The batch components to put the result in.
         sort_by: str
-            Sorting order for traces given by header from segyio.TraceField.
-            Default to ''TraceNumber''.
+            Sorting key.
 
         Returns
         -------
         batch : SeismicBatch
-            Batch with sorted traces in components.
+            Batch with new trace sorting.
         """
-        if not isinstance(self.index, TraceIndex):
-            raise TypeError("Sorting is not supported for this Index.")
-
-        pos = self.get_pos(None, src, index)
-        sorting = self.meta[src]['sorting']
-        if sorting == sort_by:
-            return
-
-        df = (self.index._idf.loc[[index]] # pylint: disable=protected-access
-              .reset_index(drop=isinstance(self.index, TraceIndex))
-              .sort_values(by=sorting if sorting not in FILE_DEPENDEND_COLUMNS else
-                           (sorting, src)))
-        order = np.argsort(df[sort_by if sort_by not in FILE_DEPENDEND_COLUMNS else
-                              (sort_by, src)].tolist())
-        getattr(self, dst)[pos] = getattr(self, src)[pos][order]
+        self._sort_traces(src=src, dst=dst, sort_by=sort_by)
         self.meta[dst]['sorting'] = sort_by
+        self.index.sort_values(sort_by=sort_by)
+        return self
+        
+    @inbatch_parallel(init="_init_component", target="threads")
+    @apply_to_each_component
+    def _sort_traces(self, index, *args, src, dst, sort_by):
+        """Sort traces."""
+        pos = self.get_pos(None, src, index)
+        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        order = np.argsort(df[sort_by].tolist())
+        getattr(self, dst)[pos] = getattr(self, src)[pos][order]
+        return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:

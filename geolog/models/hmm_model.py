@@ -37,8 +37,8 @@ class HMModel(BaseModel):
         of the estimator as defined in ``init_params``.
         """
         _ = args, kwargs
-        self.estimator = self.get("estimator", self.config)
-        init_params = self.get("init_params", self.config)
+        self.estimator = self.get("estimator", config=self.config)
+        init_params = self.get("init_params", config=self.config)
         if init_params is not None:
             if "m" not in self.estimator.init_params:
                 self.estimator.means_ = init_params["means_"]
