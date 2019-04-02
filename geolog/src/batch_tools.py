@@ -11,6 +11,15 @@ from ..batchflow import FilesIndex
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
+def line_inclination(x, y):
+    """Get regression line inclination towards x-axis."""
+    if np.std(y) < np.std(x):
+        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
+        return np.arctan(reg.coef_[0])
+    reg = LinearRegression().fit(y.reshape((-1, 1)), x)
+    if reg.coef_[0] < 0.:
+        return -(np.pi / 2) - np.arctan(reg.coef_[0])
+    return (np.pi / 2) - np.arctan(reg.coef_[0])
 
 def get_phi(dfr, dfs):
     """Get median inclination for R and S lines."""

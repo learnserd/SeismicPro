@@ -1,14 +1,10 @@
 """Index for SeismicBatch."""
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.neighbors import NearestNeighbors
-import segyio
 
 from ..batchflow import DatasetIndex
 
 from . import batch_tools as bt
-from .utils import line_inclination
 
 
 class TraceIndex(DatasetIndex):
@@ -168,7 +164,7 @@ class BinsIndex(TraceIndex):
 
     def build_df(self, **kwargs):
         """Build dataframe."""
-        df, meta = make_bin_index(**kwargs)
+        df, meta = bt.make_bin_index(**kwargs)
         self.meta.update(meta)
         return df
 

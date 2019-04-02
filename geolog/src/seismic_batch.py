@@ -10,7 +10,7 @@ import segyio
 
 from ..batchflow import action, inbatch_parallel, Batch
 
-from .seismic_index import SegyFilesIndex, TraceIndex
+from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod, write_segy_file
 
@@ -146,7 +146,7 @@ class SeismicBatch(Batch):
     def _init_component(self, *args, dst, **kwargs):
         """Create and preallocate a new attribute with the name ``dst`` if it
         does not exist and return batch indices."""
-        _ = args
+        _ = args, kwargs
         if isinstance(dst, str):
             dst = (dst,)
 
@@ -420,7 +420,7 @@ class SeismicBatch(Batch):
         if to_samples is not None:
             if isinstance(to_samples, str):
                 data = self.meta[to_samples]['samples'][data]
-            elif len(np.atleast_1d(o_samples)) == 1:
+            elif len(np.atleast_1d(to_samples)) == 1:
                 data = to_samples * data
             else:
                 data = to_samples[data]

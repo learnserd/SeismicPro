@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches
-from sklearn.linear_model import LinearRegression
 import segyio
 
 from . import seismic_index as si
@@ -64,16 +63,6 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         """Wrapped method."""
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
-
-def line_inclination(x, y):
-    """Get regression line inclination towards x-axis."""
-    if np.std(y) < np.std(x):
-        reg = LinearRegression().fit(x.reshape((-1, 1)), y)
-        return np.arctan(reg.coef_[0])
-    reg = LinearRegression().fit(y.reshape((-1, 1)), x)
-    if reg.coef_[0] < 0.:
-        return -(np.pi / 2) - np.arctan(reg.coef_[0])
-    return (np.pi / 2) - np.arctan(reg.coef_[0])
 
 def seismic_plot(arrs, names=None, figsize=None, save_to=None, **kwargs):
     """Plot seismogram(s).
