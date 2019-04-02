@@ -29,9 +29,9 @@ class TraceIndex(DatasetIndex):
         return self._index_name
 
     @property
-    def shape(self):
-        """Return a shape of the index DataFrame."""
-        return self._idf.shape
+    def tracecount(self):
+        """Return a number of indexed traces."""
+        return len(self._idf)
 
     def head(self, *args, **kwargs):
         """Return the first n rows of the index DataFrame."""
@@ -148,7 +148,7 @@ class KNNIndex(TraceIndex):
 
             dfs.append(df.iloc[np.hstack(indices)])
         df = pd.concat(dfs).reset_index()
-        indices = np.repeat(np.arange(field_index.shape[0]), n_neighbors)
+        indices = np.repeat(np.arange(field_index.tracecount), n_neighbors)
         df['KNN'] = indices
         return df
 
