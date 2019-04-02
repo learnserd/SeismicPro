@@ -1,6 +1,7 @@
 """Index for SeismicBatch."""
 import numpy as np
 import pandas as pd
+from sklearn.neighbors import NearestNeighbors
 
 from ..batchflow import DatasetIndex
 

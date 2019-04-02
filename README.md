@@ -1,14 +1,29 @@
 # geolog
 
-This repository provides a framework for machine learning on seismic data.
+This repository provides a framework for machine learning on field seismic data.
 
 Content
 =================
 
-* [Literature:](#Literature)
-* [Datasets:](#Datasets)
+* [About](#About)
+	* [SeismicIndex](#SeismicIndex)
+	* [SeismicBatch](#SeismicBatch)
+* [Installation](#Installation)
+* [File formats](#File-formats)
+	* [Seismic data](#Seismic-data)
+	* [SPS data](#SPS-data)
+	* [Picking data](#Picking-data)
+* [Datasets](#Datasets)
+    * [First-break picking](#First--break-picking)
+    * [Noise attenuation](#Noise-attenuation)
+* [Models](#Models)
+    * [First-break picking](#First--break-picking)
+    * [Noise attenuation](#Noise-attenuation)
+* [Literature](#Literature)
 
-## Literature:
+## Literature
+
+Some articles related to seismic data processing:
 * [Deep learning tutorial for denoising](https://arxiv.org/pdf/1810.11614.pdf)
 * [Minimum weighted norm interpolation of seismic records](https://pdfs.semanticscholar.org/a742/67142fcd14c4c8d19992bd304a80e064d62c.pdf)
 * [5D seismic data completion and denoising using a novel class of tensor decompositions](https://dspace.mit.edu/openaccess-disseminate/1721.1/98498)
@@ -23,5 +38,3 @@ Advanced Technology of Image Analysis](https://tel.archives-ouvertes.fr/tel-0073
 * [CNN-based seismic facies clasification](https://cs230.stanford.edu/projects_spring_2018/reports/8291004.pdf)
 * [Learning to Label Seismic Structures with Deconvolution Networks and Weak Labels](http://www.yalaudah.com/assets/files/seg2018.pdf)
 
-## Datasets:
-* [Dutch F3](https://drive.google.com/drive/folders/0B7brcf-eGK8CRUhfRW9rSG91bW8)
