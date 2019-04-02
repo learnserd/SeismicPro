@@ -10,8 +10,9 @@ import segyio
 
 from ..batchflow import action, inbatch_parallel, Batch
 
-from .seismic_index import SegyFilesIndex, TraceIndex, FILE_DEPENDEND_COLUMNS
-from .utils import IndexTracker, partialmethod
+from .seismic_index import SegyFilesIndex, TraceIndex
+from .batch_tools import FILE_DEPENDEND_COLUMNS
+from .utils import IndexTracker, partialmethod, write_segy_file
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
 
@@ -246,6 +247,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with filtered traces.
         """
+        _ = args
         i = self.get_pos(None, src, index)
         traces = getattr(self, src)[i]
         nyq = 0.5 * fs
@@ -281,6 +283,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with items converted to 2d arrays.
         """
+        _ = args
         pos = self.get_pos(None, src, index)
         data = getattr(self, src)[pos]
         if data is None or len(data) == 0:
@@ -305,7 +308,29 @@ class SeismicBatch(Batch):
         getattr(self, dst)[pos] = data_2d
 
     @action
-    def dump_segy(self, src, path, split=True):
+    def dump(self, src, fmt, path, **kwargs):
+        """Export data to file.
+
+        Parameters
+        ----------
+        src : str
+            Batch component to dump data from.
+        fmt : str
+            Output data format.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Unchanged batch.
+        """
+        if fmt.lower() in ['sgy', 'segy']:
+            return self._dump_segy(src, path, **kwargs)
+        if fmt == 'picks':
+            return self._dump_picking(src, path, **kwargs)
+        raise NotImplementedError('Unknown format.')
+
+    @action
+    def _dump_segy(self, src, path, split=True):
         """Dump data to segy files.
 
         Parameters
@@ -334,86 +359,42 @@ class SeismicBatch(Batch):
         data = np.atleast_2d(getattr(self, src)[pos])
 
         path = os.path.join(path, str(index) + '.sgy')
-        spec = segyio.spec()
-        spec.sorting = None
-        spec.format = 1
-        spec.samples = self.meta[src]['samples']
-        spec.tracecount = len(data)
 
-        df = self.index._idf.loc[[index]].reset_index(drop=self.index.name is None) # pylint: disable=protected-access
+        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        sort_by = self.meta[src]['sorting']
+        if sort_by is not None:
+            df = df.sort_values(by=sort_by)
+
+        df.reset_index(drop=self.index.name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
-        df = df[headers]
-        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+        segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
+        df = df[segy_headers]
+        df.columns = df.columns.droplevel(1)
 
-        with segyio.create(path, spec) as file:
-            file.trace = data
-            meta = df.to_dict('index')
-            for i, x in enumerate(file.header[:]):
-                meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
-                x.update(meta[i])
-
-        return self
+        write_segy_file(data, df, self.meta[src]['samples'], path)
 
     def _dump_single_segy(self, src, path):
         """Dump data to segy file."""
         data = np.vstack(getattr(self, src))
-        spec = segyio.spec()
-        spec.sorting = None
-        spec.format = 1
-        spec.samples = self.meta[src]['samples']
-        spec.tracecount = len(data)
 
-        df = self.index._idf.reset_index(drop=self.index.name is None) # pylint: disable=protected-access
+        df = self.index._idf # pylint: disable=protected-access
+        sort_by = self.meta[src]['sorting']
+        if sort_by is not None:
+            df = df.sort_values(by=sort_by)
+
+        df = df.loc[self.indices]
+        df.reset_index(drop=self.index.name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
-        df = df.loc[self.indices, segy_headers]
-        df.columns = [getattr(segyio.TraceField, k) for k in df.columns.droplevel(1)]
+        df = df[segy_headers]
+        df.columns = df.columns.droplevel(1)
 
-        with segyio.create(path, spec) as file:
-            file.trace = data
-            meta = df.to_dict('index')
-            for i, x in enumerate(file.header[:]):
-                meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
-                x.update(meta[i])
+        write_segy_file(data, df, self.meta[src]['samples'], path)
 
         return self
 
     @action
-    def merge_segy_files(self, component, path):
-        """Merge all indexed segy filed into single segy file.
-
-        Parameters
-        ----------
-        component : str
-            Source component for traces.
-        path : str
-            Path to output file.
-
-        Returns
-        -------
-        batch : SeismicBatch
-            Unchanged batch.
-        """
-        segy_index = SegyFilesIndex(self.index, name=component)
-        spec = segyio.spec()
-        spec.sorting = None
-        spec.format = 1
-        spec.tracecount = self.index.shape[0]
-        with segyio.open(segy_index.indices[0], strict=False) as file:
-            spec.samples = file.samples
-
-        with segyio.create(path, spec) as dst:
-            i = 0
-            for index in segy_index.indices:
-                with segyio.open(index, strict=False) as src:
-                    dst.trace[i: i + src.tracecount] = src.trace
-
-                i += src.tracecount
-
-        return self
-
-    @action
-    def dump_picking(self, src, path, to_samples=None, columns=None):
+    def _dump_picking(self, src, path, to_samples=None, columns=None):
         """Dump picking to file.
 
         Parameters
@@ -447,7 +428,12 @@ class SeismicBatch(Batch):
         if columns is None:
             columns = PICKS_FILE_HEADERS
 
-        df = self.index._idf.loc[self.indices] # pylint: disable=protected-access
+        df = self.index._idf # pylint: disable=protected-access
+        sort_by = self.meta[src]['sorting']
+        if sort_by is not None:
+            df = df.sort_values(by=sort_by)
+
+        df = df.loc[self.indices]
         df['timeOffset'] = data
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
@@ -496,7 +482,7 @@ class SeismicBatch(Batch):
         res = [df.loc[i, 'timeOffset'].values for i in self.indices]
         setattr(self, components, res)
         return self
-        
+
     @apply_to_each_component
     def _load_segy(self, src, dst, tslice=None):
         """Load data from segy files.
@@ -542,7 +528,7 @@ class SeismicBatch(Batch):
     @inbatch_parallel(init="_init_component", target="threads")
     def _load_from_segy_file(self, index, *args, src, dst, tslice=None):
         """Load from a single segy file."""
-        _ = src
+        _ = src, args
         pos = self.get_pos(None, "indices", index)
         path = index
         trace_seq = self.index._idf.loc[index][('TRACE_SEQUENCE_FILE', src)] # pylint: disable=protected-access
@@ -582,6 +568,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with sliced traces.
         """
+        _ = args
         pos = self.get_pos(None, src, index)
         data = getattr(self, src)[pos]
         getattr(self, dst)[pos] = data[:, slice_obj]
@@ -608,6 +595,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with padded traces.
         """
+        _ = args
         pos = self.get_pos(None, src, index)
         data = getattr(self, src)[pos]
         pad_width = kwargs['pad_width']
@@ -619,7 +607,9 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def sort_traces(self, *args, src, dst, sort_by):
+    @inbatch_parallel(init="_init_component", target="threads")
+    @apply_to_each_component
+    def sort_traces(self, index, *args, src, dst, sort_by):
         """Sort traces.
 
         Parameters
@@ -636,19 +626,14 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with new trace sorting.
         """
-        self._sort_traces(src=src, dst=dst, sort_by=sort_by)
-        self.meta[dst]['sorting'] = sort_by
-        self.index.sort_values(sort_by=sort_by)
-        return self
-        
-    @inbatch_parallel(init="_init_component", target="threads")
-    @apply_to_each_component
-    def _sort_traces(self, index, *args, src, dst, sort_by):
-        """Sort traces."""
+        _ = args
         pos = self.get_pos(None, src, index)
         df = self.index._idf.loc[[index]] # pylint: disable=protected-access
         order = np.argsort(df[sort_by].tolist())
         getattr(self, dst)[pos] = getattr(self, src)[pos][order]
+        if pos == 0:
+            self.meta[dst]['sorting'] = sort_by
+
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):

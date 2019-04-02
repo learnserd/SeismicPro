@@ -1,9 +1,14 @@
 """Utils."""
 import functools
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from sklearn.linear_model import LinearRegression
+import segyio
+
+from . import seismic_index as si
+from ..batchflow import FilesIndex
 
 
 class IndexTracker:
@@ -109,7 +114,7 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, **kwargs):
 
     plt.show()
 
-def spectrum_plot(frame, arrs, rate, max_freq=None, names=None,
+def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
                   figsize=None, save_to=None, **kwargs):
     """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
@@ -155,7 +160,10 @@ def spectrum_plot(frame, arrs, rate, max_freq=None, names=None,
         ax[0, i].set_aspect('auto')
         spec = abs(np.fft.rfft(arr[frame], axis=1))**2
         freqs = np.fft.rfftfreq(len(arr[frame][0]), d=rate)
-        mask = freqs <= max_freq if max_freq is not None else freqs
+        if max_freq is None:
+            max_freq = np.inf
+
+        mask = freqs <= max_freq
         ax[1, i].plot(freqs[mask], np.mean(spec, axis=0)[mask], lw=2)
         ax[1, i].set_xlabel('Hz')
         ax[1, i].set_title('Spectrum plot {}'.format(names[i] if names
@@ -166,3 +174,90 @@ def spectrum_plot(frame, arrs, rate, max_freq=None, names=None,
         plt.savefig(save_to)
 
     plt.show()
+
+def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
+    """Write data and headers into SEGY file.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    df : DataFrame
+        DataFrame with trace headers data.
+    samples : array, same length as traces
+        Time samples for trace data.
+    path : str
+        Path to output file.
+    sorting : int
+        SEGY file sorting.
+    format : int
+        SEGY file format.
+
+    Returns
+    -------
+    """
+    spec = segyio.spec()
+    spec.sorting = sorting
+    spec.format = segy_format
+    spec.samples = samples
+    spec.tracecount = len(data)
+
+    df.columns = [getattr(segyio.TraceField, k) for k in df.columns]
+
+    with segyio.create(path, spec) as file:
+        file.trace = data
+        meta = df.to_dict('index')
+        for i, x in enumerate(file.header[:]):
+            meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
+            x.update(meta[i])
+
+def merge_segy_files(output_path, **kwargs):
+    """Merge segy files into a single segy file.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to output file.
+    kwargs : dict
+        Keyword arguments to index input segy files.
+
+    Returns
+    -------
+    """
+    segy_index = si.SegyFilesIndex(**kwargs, name='data')
+    spec = segyio.spec()
+    spec.sorting = None
+    spec.format = 1
+    spec.tracecount = segy_index.shape[0]
+    with segyio.open(segy_index.indices[0], strict=False) as file:
+        spec.samples = file.samples
+
+    with segyio.create(output_path, spec) as dst:
+        i = 0
+        for index in segy_index.indices:
+            with segyio.open(index, strict=False) as src:
+                dst.trace[i: i + src.tracecount] = src.trace
+
+            i += src.tracecount
+
+def merge_picking_files(output_path, **kwargs):
+    """Merge picking files into a single file.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to output file.
+    kwargs : dict
+        Keyword arguments to index input files.
+
+    Returns
+    -------
+    """
+    files_index = FilesIndex(**kwargs)
+    dfs = []
+    for i in files_index.indices:
+        path = files_index.get_fullpath(i)
+        dfs.append(pd.read_csv(path))
+
+    df = pd.concat(dfs, ignore_index=True)
+    df.to_csv(output_path, index=False)
