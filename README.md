@@ -1,25 +1,69 @@
 # geolog
 
-This repository provides a framework for machine learning on field seismic data.
+Machine learning for field seismic data processing.
 
 Content
 =================
 
 * [About](#About)
-	* [SeismicIndex](#SeismicIndex)
-	* [SeismicBatch](#SeismicBatch)
+	* [Seismic Index](#Seismic-Index)
+	* [Seismic batch](#Seismic-batch)
 * [Installation](#Installation)
 * [File formats](#File-formats)
 	* [Seismic data](#Seismic-data)
 	* [SPS data](#SPS-data)
 	* [Picking data](#Picking-data)
 * [Datasets](#Datasets)
-    * [First-break picking](#First--break-picking)
     * [Noise attenuation](#Noise-attenuation)
+    * [First-break picking](#First--break-picking)
 * [Models](#Models)
-    * [First-break picking](#First--break-picking)
     * [Noise attenuation](#Noise-attenuation)
+    * [First-break picking](#First--break-picking)
 * [Literature](#Literature)
+
+## About
+Geolog provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/geolog/blob/new_index/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/geolog/blob/new_index/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
+
+
+## Installation
+
+```
+git clone --recursive https://github.com/analysiscenter/geolog.git
+```
+
+## File formats
+### Seismic data
+
+Seiemic data are expected to be in SEG-Y format.
+
+### SPS data
+
+SPS data are expected as R, S, X text files in csv (comma-separated-values) format with required and optional headers:
+* Required R file headers: **rline**, **rid**, **x**, **y**, **z**.
+* Required S file headers: **sline**, **sid**, **x**, **y**, **z**.
+* Required X file headers: **FieldRecord**, **sline**, **sid**, **from_channel**, **to_channel**, **from_recaiver**, **to_receiver**.
+
+### Picking data
+
+File with first-break picking data is expected to be in csv (comma-separated-values) format with required and optional headers.
+
+Required headers: **FieldRecord**, **TraceNumber**, **ShotPoint**, **timeOffset**.
+
+## Datasets
+
+### Noise attenuation
+### First-break picking
+
+## Models
+
+### Noise attenuation
+
+See the [tutorial](https://github.com/analysiscenter/geolog/blob/new_index/tutorials/3.%20Noise%20attenuation.ipynb) for model training and inference.
+
+### First-break picking
+
+See the [tutorial](https://github.com/analysiscenter/geolog/blob/new_index/tutorials/4.%20First-break%20picking.ipynb) for model training and inference.
+
 
 ## Literature
 
