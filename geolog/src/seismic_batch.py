@@ -394,7 +394,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def _dump_picking(self, src, path, to_samples=None, columns=None):
+    def _dump_picking(self, src, path, traces, to_samples, columns=None):
         """Dump picking to file.
 
         Parameters
@@ -403,11 +403,10 @@ class SeismicBatch(Batch):
             Source to get picking from.
         path : str
             Output file path.
-        to_samples : str or scalar or array-like, default to None
-            Convertion of the source data interpreted as array of indices to time samples.
-            If string, get time samples from corresponding batch component.
-            If scalar, the value is interpreted as sampling rate.
-            If array-like, the array is interpreted as time samples.
+        traces : str
+            Batch component with corresponding traces.
+        to_samples : bool
+            Should be picks converted to time samples.
         columns: array_like, optional
             Columns to include in the output file. See PICKS_FILE_HEADERS for default format.
 
@@ -417,19 +416,14 @@ class SeismicBatch(Batch):
             Batch unchanged.
         """
         data = np.vstack(getattr(self, src)).ravel()
-        if to_samples is not None:
-            if isinstance(to_samples, str):
-                data = self.meta[to_samples]['samples'][data]
-            elif len(np.atleast_1d(to_samples)) == 1:
-                data = to_samples * data
-            else:
-                data = to_samples[data]
+        if to_samples:
+            data = self.meta[traces]['samples'][data]
 
         if columns is None:
             columns = PICKS_FILE_HEADERS
 
         df = self.index._idf # pylint: disable=protected-access
-        sort_by = self.meta[src]['sorting']
+        sort_by = self.meta[traces]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
@@ -512,7 +506,7 @@ class SeismicBatch(Batch):
         idf = self.index._idf # pylint: disable=protected-access
         if idf.index.name is None:
             items = [self.get_pos(None, "indices", i) for i in idf.index]
-            res = np.array(list(all_traces[items]) + [None])[:-1]
+            res = np.array(list(np.expand_dims(all_traces, 1)[items]) + [None])[:-1]
         else:
             res = np.array([None] * len(self))
             for i in self.indices:
@@ -665,12 +659,12 @@ class SeismicBatch(Batch):
         return fig, tracker
 
     def imshow(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
-        """Show data on a 2D regular raster.
+        """Show data on a 2D plot.
 
         Parameters
         ----------
-        src : str
-            The batch component with data to show.
+        src : str or array of str
+            The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
         figsize :  tuple of integers, optional, default: None
@@ -685,14 +679,17 @@ class SeismicBatch(Batch):
         Returns
         -------
         """
-        pos = self.get_pos(None, src, index)
-        data = getattr(self, src)[pos]
-        if figsize is not None:
-            plt.figure(figsize=figsize)
+        pos = self.get_pos(None, 'indices', index)
+        if len(np.atleast_1d(src)) == 1:
+            src = (src,)
 
-        plt.imshow(data.T, **kwargs)
-        plt.title(index)
-        plt.axis('auto')
+        _, ax = plt.subplots(1, len(src), figsize=figsize, squeeze=False)
+        for i, isrc in enumerate(src):
+            data = getattr(self, isrc)[pos]
+            ax[0, i].imshow(data.T, **kwargs)
+            ax[0, i].set_title(isrc)
+            ax[0, i].set_aspect('auto')
+
         if save_to is not None:
             plt.savefig(save_to, dpi=dpi)
 

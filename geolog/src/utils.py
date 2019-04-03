@@ -197,7 +197,6 @@ def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
         file.trace = data
         meta = df.to_dict('index')
         for i, x in enumerate(file.header[:]):
-            meta[i][segyio.TraceField.TRACE_SEQUENCE_FILE] = i
             x.update(meta[i])
 
 def merge_segy_files(output_path, **kwargs):
@@ -217,7 +216,7 @@ def merge_segy_files(output_path, **kwargs):
     spec = segyio.spec()
     spec.sorting = None
     spec.format = 1
-    spec.tracecount = segy_index.shape[0]
+    spec.tracecount = segy_index.tracecount
     with segyio.open(segy_index.indices[0], strict=False) as file:
         spec.samples = file.samples
 
@@ -226,6 +225,7 @@ def merge_segy_files(output_path, **kwargs):
         for index in segy_index.indices:
             with segyio.open(index, strict=False) as src:
                 dst.trace[i: i + src.tracecount] = src.trace
+                dst.header[i: i + src.tracecount] = src.header
 
             i += src.tracecount
 
