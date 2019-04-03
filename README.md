@@ -6,8 +6,6 @@ Content
 =================
 
 * [About](#About)
-	* [Seismic Index](#Seismic-Index)
-	* [Seismic batch](#Seismic-batch)
 * [Installation](#Installation)
 * [File formats](#File-formats)
 	* [Seismic data](#Seismic-data)
