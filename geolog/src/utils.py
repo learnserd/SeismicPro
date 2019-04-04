@@ -34,11 +34,19 @@ class IndexTracker:
         """Update method."""
         self.ax.clear()
         img = self.frames[self.ind]
-        self.ax.imshow(img.T, **self.img_kwargs)
+        img = np.squeeze(img)
+        if img.ndim == 2:
+            self.ax.imshow(img.T, **self.img_kwargs)
+        elif img.ndim == 1:
+            self.ax.plot(img.T, **self.img_kwargs)
+        else:
+            raise ValueError('Invalid ndim to plot data.')
+
         self.ax.set_title('%s' % self.frame_names[self.ind])
         self.ax.set_aspect('auto')
-        self.ax.set_ylim([img.shape[1], 0])
-        self.ax.set_xlim([0, img.shape[0]])
+        if img.ndim == 2:
+            self.ax.set_ylim([img.shape[1], 0])
+            self.ax.set_xlim([0, img.shape[0]])
 
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
@@ -64,27 +72,29 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def seismic_plot(arrs, names=None, figsize=None, save_to=None, **kwargs):
-    """Plot seismogram(s).
+def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwargs):
+    """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
 
     Parameters
     ----------
     arrs : array-like
-        Seismogram or sequence of seismograms to plot.
+        Arrays to plot.
     names : str or array-like, optional
         Title names to identify subplots.
     figsize : array-like, optional
         Output plot size.
     save_to : str or None, optional
         If not None, save plot to given path.
+    dpi : int, optional, default: None
+        The resolution argument for matplotlib.pyplot.savefig.
     kwargs : dict
-        Named argumets to matplotlib.pyplot.imshow
+        Additional keyword arguments for plot.
 
     Returns
     -------
-    Plot of seismogram(s).
+    Multi-column subplots.
     """
-    if np.asarray(arrs).ndim == 2:
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
 
     if isinstance(names, str):
@@ -92,14 +102,21 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, **kwargs):
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
     for i, arr in enumerate(arrs):
-        ax[0, i].imshow(arr.T, **kwargs)
+        arr = np.squeeze(arr)
+        if arr.ndim == 2:
+            ax[0, i].imshow(arr.T, **kwargs)
+        elif arr.ndim == 1:
+            ax[0, i].plot(arr, **kwargs)
+        else:
+            raise ValueError('Invalid ndim to plot data.')
+
         if names is not None:
             ax[0, i].set_title(names[i])
 
         ax[0, i].set_aspect('auto')
 
     if save_to is not None:
-        plt.savefig(save_to)
+        plt.savefig(save_to, dpi=dpi)
 
     plt.show()
 
@@ -109,10 +126,10 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     Parameters
     ----------
-    frame : tuple
-        List of slices that frame region of interest.
     arrs : array-like
         Seismogram or sequence of seismograms.
+    frame : tuple
+        List of slices that frame region of interest.
     rate : scalar
         Sampling rate.
     max_freq : scalar
@@ -130,7 +147,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
     -------
     Plot of seismogram(s) and power spectrum(s).
     """
-    if np.asarray(arrs).ndim == 2:
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
 
     if isinstance(names, str):
