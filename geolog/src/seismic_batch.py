@@ -12,7 +12,7 @@ from ..batchflow import action, inbatch_parallel, Batch
 
 from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
-from .utils import IndexTracker, partialmethod, write_segy_file
+from .utils import IndexTracker, partialmethod, write_segy_file, spectrum_plot, seismic_plot
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
 
@@ -647,7 +647,7 @@ class SeismicBatch(Batch):
         scroll_step : int, default: 1
             Number of batch items scrolled at one time.
         kwargs: dict
-            Additional keyword arguments for matplotlib imshow.
+            Additional keyword arguments for plt.
 
         Returns
         -------
@@ -658,8 +658,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def imshow(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
-        """Show data on a 2D plot.
+    def seismic_plot(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
+        """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
 
         Parameters
         ----------
@@ -674,23 +674,52 @@ class SeismicBatch(Batch):
         dpi : int, optional, default: None
             The resolution argument for matplotlib savefig.
         kwargs: dict
-            Additional keyword arguments for matplotlib imshow.
+            Additional keyword arguments for plot.
 
         Returns
         -------
+        Multi-column subplots.
         """
         pos = self.get_pos(None, 'indices', index)
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
-        _, ax = plt.subplots(1, len(src), figsize=figsize, squeeze=False)
-        for i, isrc in enumerate(src):
-            data = getattr(self, isrc)[pos]
-            ax[0, i].imshow(data.T, **kwargs)
-            ax[0, i].set_title(isrc)
-            ax[0, i].set_aspect('auto')
+        arrs = [getattr(self, isrc)[pos] for isrc in src]
+        names = [' '.join([i, str(index)]) for i in src]
+        seismic_plot(arrs, names=names, figsize=figsize, save_to=save_to, dpi=dpi, **kwargs)
 
-        if save_to is not None:
-            plt.savefig(save_to, dpi=dpi)
+    def spectrum_plot(self, src, index, frame, rate, max_freq=None,
+                      figsize=None, save_to=None, **kwargs):
+        """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
-        plt.show()
+        Parameters
+        ----------
+        src : str or array of str
+            The batch component(s) with data to show.
+        index : same type as batch.indices
+            Data index to show.
+        frame : tuple
+            List of slices that frame region of interest.
+        rate : scalar
+            Sampling rate.
+        max_freq : scalar
+            Upper frequence limit.
+        figsize : array-like, optional
+            Output plot size.
+        save_to : str or None, optional
+            If not None, save plot to given path.
+        kwargs : dict
+            Named argumets to matplotlib.pyplot.imshow
+
+        Returns
+        -------
+        Plot of seismogram(s) and power spectrum(s).
+        """
+        pos = self.get_pos(None, 'indices', index)
+        if len(np.atleast_1d(src)) == 1:
+            src = (src,)
+
+        arrs = [getattr(self, isrc)[pos] for isrc in src]
+        names = [' '.join([i, str(index)]) for i in src]
+        spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
+                      names=names, figsize=figsize, save_to=save_to, **kwargs)
