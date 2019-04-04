@@ -94,7 +94,7 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwarg
     -------
     Multi-column subplots.
     """
-    if type(arrs) is np.ndarray and arrs.ndim == 2:
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
 
     if isinstance(names, str):
@@ -147,7 +147,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
     -------
     Plot of seismogram(s) and power spectrum(s).
     """
-    if type(arrs) is np.ndarray and arrs.ndim == 2:
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
 
     if isinstance(names, str):
