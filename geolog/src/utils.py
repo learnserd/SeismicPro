@@ -72,13 +72,22 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwargs):
+def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1,
+                 names=None, figsize=None, save_to=None, dpi=None, **kwargs):
     """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
 
     Parameters
     ----------
     arrs : array-like
         Arrays to plot.
+    wiggle : bool, default to False
+        Show traces in a wiggle form.
+    xlim : tuple, optional
+        Range in x-axis to show.
+    ylim : tuple, optional
+        Range in y-axis to show.
+    std : scalar, optional
+        Amplitude scale for traces in wiggle form.
     names : str or array-like, optional
         Title names to identify subplots.
     figsize : array-like, optional
@@ -102,9 +111,27 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwarg
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
     for i, arr in enumerate(arrs):
-        arr = np.squeeze(arr)
+        if not wiggle:
+            arr = np.squeeze(arr)
+
+        if xlim is None:
+            xlim = (0, len(arr))
+
         if arr.ndim == 2:
-            ax[0, i].imshow(arr.T, **kwargs)
+            if ylim is None:
+                ylim = (0, len(arr[0]))
+
+            if wiggle:
+                offsets = np.arange(*xlim)
+                y = np.arange(*ylim)
+                for k in offsets:
+                    x = k + std * arr[k, slice(*ylim)] / np.std(arr)
+                    ax[0, i].plot(x, y, 'k-')
+                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color='k')
+
+            else:
+                ax[0, i].imshow(arr.T, **kwargs)
+
         elif arr.ndim == 1:
             ax[0, i].plot(arr, **kwargs)
         else:
@@ -112,6 +139,14 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwarg
 
         if names is not None:
             ax[0, i].set_title(names[i])
+
+        if arr.ndim == 2:
+            plt.ylim([ylim[1], ylim[0]])
+            if not wiggle:
+                plt.xlim(xlim)
+
+        if arr.ndim == 1:
+            plt.xlim(xlim)
 
         ax[0, i].set_aspect('auto')
 
