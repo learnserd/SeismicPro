@@ -658,8 +658,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
-        """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
+    def seismic_plot(self, src, index, **kwargs):
+        """Plot seismic traces.
 
         Parameters
         ----------
@@ -667,12 +667,6 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        figsize :  tuple of integers, optional, default: None
-            Image figsize as in matplotlib.
-        save_to : str, default: None
-            Path to save image.
-        dpi : int, optional, default: None
-            The resolution argument for matplotlib savefig.
         kwargs: dict
             Additional keyword arguments for plot.
 
@@ -686,10 +680,9 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        seismic_plot(arrs, names=names, figsize=figsize, save_to=save_to, dpi=dpi, **kwargs)
+        seismic_plot(arrs=arrs, names=names, **kwargs)
 
-    def spectrum_plot(self, src, index, frame, rate, max_freq=None,
-                      figsize=None, save_to=None, **kwargs):
+    def spectrum_plot(self, src, index, **kwargs):
         """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
         Parameters
@@ -698,18 +691,8 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        frame : tuple
-            List of slices that frame region of interest.
-        rate : scalar
-            Sampling rate.
-        max_freq : scalar
-            Upper frequence limit.
-        figsize : array-like, optional
-            Output plot size.
-        save_to : str or None, optional
-            If not None, save plot to given path.
         kwargs : dict
-            Named argumets to matplotlib.pyplot.imshow
+            Additional keyword arguments for plot.
 
         Returns
         -------
@@ -721,5 +704,4 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
-                      names=names, figsize=figsize, save_to=save_to, **kwargs)
+        spectrum_plot(arrs=arrs, names=names, **kwargs)

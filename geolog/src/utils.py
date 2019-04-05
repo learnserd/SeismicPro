@@ -73,13 +73,14 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
     return method
 
 def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches
-                 names=None, figsize=None, save_to=None, dpi=None, **kwargs):
-    """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
+                 pts=None, s=None, c=None, names=None, figsize=None,
+                 save_to=None, dpi=None, **kwargs):
+    """Plot seismic traces.
 
     Parameters
     ----------
     arrs : array-like
-        Arrays to plot.
+        Arrays of seismic traces to plot.
     wiggle : bool, default to False
         Show traces in a wiggle form.
     xlim : tuple, optional
@@ -88,6 +89,12 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         Range in y-axis to show.
     std : scalar, optional
         Amplitude scale for traces in wiggle form.
+    pts : array_like, shape (n, )
+        The points data positions.
+    s : scalar or array_like, shape (n, ), optional
+        The marker size in points**2.
+    c : color, sequence, or sequence of color, optional
+        The marker color.
     names : str or array-like, optional
         Title names to identify subplots.
     figsize : array-like, optional
@@ -137,12 +144,15 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         else:
             raise ValueError('Invalid ndim to plot data.')
 
+        if pts is not None:
+            ax[0, i].scatter(*pts, s=s, c=c)
+
         if names is not None:
             ax[0, i].set_title(names[i])
 
         if arr.ndim == 2:
             plt.ylim([ylim[1], ylim[0]])
-            if not wiggle:
+            if (not wiggle) or (pts is not None):
                 plt.xlim(xlim)
 
         if arr.ndim == 1:
