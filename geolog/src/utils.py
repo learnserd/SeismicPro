@@ -72,7 +72,7 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1,
+def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches
                  names=None, figsize=None, save_to=None, dpi=None, **kwargs):
     """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
 
