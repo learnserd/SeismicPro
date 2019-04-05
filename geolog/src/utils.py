@@ -72,7 +72,7 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches
+def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
                  pts=None, s=None, c=None, names=None, figsize=None,
                  save_to=None, dpi=None, **kwargs):
     """Plot seismic traces.
