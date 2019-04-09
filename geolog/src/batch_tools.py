@@ -367,9 +367,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None,
     dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver'], axis=1)
     dfm.rename(columns={'x_s': 'SourceX', 'y_s': 'SourceY'}, inplace=True)
-
     meta = dict(origin=origin, phi=np.rad2deg(phi), bin_size=(bin_size, bin_size))
-
     return dfm, meta
 
 def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, **kwargs):
@@ -403,6 +401,7 @@ def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, **kwargs):
         df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, **kwargs)
     else:
         df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, **kwargs)
+
     df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
     return df, meta
 

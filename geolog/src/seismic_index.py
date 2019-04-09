@@ -25,6 +25,11 @@ class TraceIndex(DatasetIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Set of columns includes FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
+        a number of extra_headers for index built from SEGY files or FieldRecord, TraceNumber and
+        extra SPS file columns for index built from SPS files.
     """
     def __init__(self, *args, index_name=None, **kwargs):
         self.meta = {}
@@ -138,18 +143,16 @@ class TraceIndex(DatasetIndex):
             if self.index_name is not None:
                 idf.set_index(self.index_name, inplace=True)
 
-            indices = idf.index.unique().sort_values()
-            self._idf = idf.loc[indices]
-            return indices
+            self._idf = idf.sort_index()
+            return self._idf.index.unique()
 
         df = self.build_df(**kwargs)
         df.reset_index(drop=df.index.name is None, inplace=True)
         if self.index_name is not None:
             df.set_index(self.index_name, inplace=True)
-
-        indices = df.index.unique().sort_values()
-        self._idf = df.loc[indices]
-        return indices
+  
+        self._idf = df.sort_index()
+        return self._idf.index.unique()
 
     def build_df(self, **kwargs):
         """Build DataFrame."""
@@ -184,6 +187,10 @@ class SegyFilesIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
+        a number of extra_headers if specified.
     """
     def __init__(self, *args, **kwargs):
         kwargs['index_name'] = ('file_id', kwargs.get('name'))
@@ -206,6 +213,10 @@ class CustomIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
+        a number of extra_headers if specified.
     """
     def __init__(self, *args, **kwargs):
         index_name = kwargs['index_name']
@@ -231,6 +242,10 @@ class KNNIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
+        a number of extra_headers if specified.
     """
     def __init__(self, *args, **kwargs):
         kwargs['index_name'] = 'KNN'
@@ -274,6 +289,11 @@ class FieldIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Set of columns includes FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
+        a number of extra_headers for index built from SEGY files or SPS file columns for index 
+        built from SPS files.
     """
     def __init__(self, *args, **kwargs):
         kwargs['index_name'] = 'FieldRecord'
@@ -306,6 +326,9 @@ class BinsIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
+    _idf : pandas.DataFrame
+        DataFrame with rows corresponding to seismic traces and columns with metadata about
+        traces. Set of columns includes FieldRecord, TraceNumber and extra SPS file columns.
     """
     def __init__(self, *args, **kwargs):
         kwargs['index_name'] = 'bin_id'
