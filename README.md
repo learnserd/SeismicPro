@@ -20,13 +20,13 @@ Content
 * [Literature](#Literature)
 
 ## About
-Geolog provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/geolog/blob/master/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/geolog/blob/master/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
+Geolog provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
 
 
 ## Installation
 
 ```
-git clone --recursive https://github.com/analysiscenter/geolog.git
+git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 ```
 
 ## File formats
@@ -51,7 +51,7 @@ Required headers: **FieldRecord**, **TraceNumber**, **ShotPoint**, **timeOffset*
 
 ### Noise attenuation
 
-See the [notebook](https://github.com/analysiscenter/geolog/blob/master/datasets/noise_attenuation.ipynb) for description of datasets.
+See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) for description of datasets.
 
 ### First-break picking
 
@@ -59,11 +59,11 @@ See the [notebook](https://github.com/analysiscenter/geolog/blob/master/datasets
 
 ### Noise attenuation
 
-See the [tutorial](https://github.com/analysiscenter/geolog/blob/master/tutorials/3.%20Noise%20attenuation.ipynb) for model training and inference.
+See the [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.%20Noise%20attenuation.ipynb) for model training and inference.
 
 ### First-break picking
 
-See the [tutorial](https://github.com/analysiscenter/geolog/blob/master/tutorials/4.%20First-break%20picking.ipynb) for model training and inference.
+See the [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.%20First-break%20picking.ipynb) for model training and inference.
 
 
 ## Literature
