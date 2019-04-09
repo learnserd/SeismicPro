@@ -616,7 +616,7 @@ class SeismicBatch(Batch):
         """
         _ = args
         pos = self.get_pos(None, src, index)
-        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        df = self.index.get_df([index])
         order = np.argsort(df[sort_by].tolist())
         getattr(self, dst)[pos] = getattr(self, src)[pos][order]
         if pos == 0:
