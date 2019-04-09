@@ -150,7 +150,7 @@ class TraceIndex(DatasetIndex):
         df.reset_index(drop=df.index.name is None, inplace=True)
         if self.index_name is not None:
             df.set_index(self.index_name, inplace=True)
-  
+
         self._idf = df.sort_index()
         return self._idf.index.unique()
 
@@ -292,7 +292,7 @@ class FieldIndex(TraceIndex):
     _idf : pandas.DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Set of columns includes FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
-        a number of extra_headers for index built from SEGY files or SPS file columns for index 
+        a number of extra_headers for index built from SEGY files or SPS file columns for index
         built from SPS files.
     """
     def __init__(self, *args, **kwargs):
