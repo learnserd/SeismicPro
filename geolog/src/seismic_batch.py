@@ -360,12 +360,12 @@ class SeismicBatch(Batch):
 
         path = os.path.join(path, str(index) + '.sgy')
 
-        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        df = self.index.get_df([index], reset_index=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
-        df.reset_index(drop=self.index.name is None, inplace=True)
+        df.reset_index(drop=self.index.index_name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
         df = df[segy_headers]
@@ -377,13 +377,13 @@ class SeismicBatch(Batch):
         """Dump data to segy file."""
         data = np.vstack(getattr(self, src))
 
-        df = self.index._idf # pylint: disable=protected-access
+        df = self.index.get_df(reset_index=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df.reset_index(drop=self.index.name is None, inplace=True)
+        df.reset_index(drop=self.index.index_name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
         df = df[segy_headers]
@@ -422,14 +422,14 @@ class SeismicBatch(Batch):
         if columns is None:
             columns = PICKS_FILE_HEADERS
 
-        df = self.index._idf # pylint: disable=protected-access
+        df = self.index.get_df(reset_index=False)
         sort_by = self.meta[traces]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
         df['timeOffset'] = data
-        df = df.reset_index(drop=self.index.name is None)[columns]
+        df = df.reset_index(drop=self.index.index_name is None)[columns]
         df.columns = df.columns.droplevel(1)
         df.to_csv(path, index=False)
         return self
@@ -465,13 +465,11 @@ class SeismicBatch(Batch):
         """Load picking from file."""
         df = pd.read_csv(src)
         df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
-        idf = self.index._idf # pylint: disable=protected-access
-        if self.index.name is not None:
-            idf = idf.reset_index()
+        idf = self.index.get_df()
 
         df = idf.merge(df, how='left')
-        if self.index.name is not None:
-            df = df.set_index(self.index.name)
+        if self.index.index_name is not None:
+            df = df.set_index(self.index.index_name)
 
         res = [df.loc[i, 'timeOffset'].values for i in self.indices]
         setattr(self, components, res)
@@ -496,23 +494,19 @@ class SeismicBatch(Batch):
             Batch with loaded components.
         """
         segy_index = SegyFilesIndex(self.index, name=src)
-        idf = segy_index._idf # pylint: disable=protected-access
-        order = np.hstack([np.where(idf.index == i)[0] for i in segy_index.indices])
+        sdf = segy_index.get_df()
+        sdf['order'] = np.arange(len(sdf))
+        order = self.index.get_df().merge(sdf, on=('TraceNumber', 'FieldRecord'))['order']
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
-        all_traces = np.concatenate(getattr(batch, dst))[np.argsort(order)]
+        all_traces = np.concatenate(getattr(batch, dst))[order]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
-        idf = self.index._idf # pylint: disable=protected-access
-        if idf.index.name is None:
-            items = [self.get_pos(None, "indices", i) for i in idf.index]
-            res = np.array(list(np.expand_dims(all_traces, 1)[items]) + [None])[:-1]
+        if self.index.index_name is None:
+            res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
         else:
-            res = np.array([None] * len(self))
-            for i in self.indices:
-                ipos = self.get_pos(None, "indices", i)
-                items = np.where(idf.index == i)[0]
-                res[ipos] = all_traces[items]
+            lens = [len(self.index.get_df(i, reset_index=False)) for i in self.indices]
+            res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
         setattr(self, dst, res)
         self.meta[dst]['sorting'] = None
@@ -525,7 +519,7 @@ class SeismicBatch(Batch):
         _ = src, args
         pos = self.get_pos(None, "indices", index)
         path = index
-        trace_seq = self.index._idf.loc[index][('TRACE_SEQUENCE_FILE', src)] # pylint: disable=protected-access
+        trace_seq = self.index.get_df([index])[('TRACE_SEQUENCE_FILE', src)]
         if tslice is None:
             tslice = slice(None)
 
