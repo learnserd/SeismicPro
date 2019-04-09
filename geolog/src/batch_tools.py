@@ -34,7 +34,7 @@ def line_inclination(x, y):
     return (np.pi / 2) - np.arctan(reg.coef_[0])
 
 def get_phi(dfr, dfs):
-    """Get median inclination for R and S lines.
+    """Get median absolute inclination for R and S lines.
 
     Parameters
     ----------
@@ -46,8 +46,8 @@ def get_phi(dfr, dfs):
     Returns
     -------
     phi : float
-        Median inclination of R and S lines towards x-axis.
-        The value is within (-pi/2, pi/2) range.
+        Median absolute inclination of R and S lines towards x-axis.
+        The value is within (0, pi/2) range.
     """
     incl = []
     for _, group in dfs.groupby('sline'):
@@ -334,10 +334,11 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None,
         phi = get_phi(dfr, dfs)
     else:
         phi = np.radians(phi) # pylint: disable=assignment-from-no-return
+
     if phi > 0:
         phi += -np.pi / 2
 
-    pts = rotate_2d(dfm[['CDP_X', 'CDP_Y']].values, -phi)
+    pts = rotate_2d(dfm[['CDP_X', 'CDP_Y']].values, -phi) # pylint: disable=invalid-unary-operand-type
 
     if origin is None:
         if opt == 'gradient':
@@ -350,7 +351,7 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None,
         s = shift + bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
         origin = rotate_2d(s.reshape((1, 2)), phi)[0]
     else:
-        s = rotate_2d(origin.reshape((1, 2)), -phi)[0]
+        s = rotate_2d(origin.reshape((1, 2)), -phi)[0] # pylint: disable=invalid-unary-operand-type
 
     t = np.max(pts, axis=0)
     xbins, ybins = np.array([np.arange(a, b + bin_size, bin_size) for a, b in zip(s, t)])

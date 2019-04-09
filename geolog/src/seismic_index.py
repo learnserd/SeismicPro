@@ -64,7 +64,7 @@ class TraceIndex(DatasetIndex):
 
     def head(self, *args, **kwargs):
         """Return the first n rows of the index DataFrame.
-        
+
         Parameters
         ----------
         args : misc
@@ -80,7 +80,7 @@ class TraceIndex(DatasetIndex):
 
     def tail(self, *args, **kwargs):
         """Return the last n rows of the index DataFrame.
-       
+
         Parameters
         ----------
         args : misc
