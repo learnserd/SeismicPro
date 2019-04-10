@@ -14,8 +14,8 @@ class TraceIndex(DatasetIndex):
     Parameters
     ----------
     kwargs : dict
-        Named argumets for ```build_df``` method.
-        Can be either a set of ```dfr```, ```dfs```, ```dfx``` argumets for
+        Named arguments for ```build_df``` method.
+        Can be either a set of ```dfr```, ```dfs```, ```dfx``` arguments for
         building index from SPS files, or named arguments for ```batchflow.FilesIndex```
         for building index from SEGY files.
 
@@ -25,7 +25,7 @@ class TraceIndex(DatasetIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Set of columns includes FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
         a number of extra_headers for index built from SEGY files or FieldRecord, TraceNumber and
@@ -33,28 +33,33 @@ class TraceIndex(DatasetIndex):
     """
     def __init__(self, *args, index_name=None, **kwargs):
         self.meta = {}
-        self.index_name = index_name
-        self._idf = None
+        self._idf = pd.DataFrame()
+        self._idf.index.name = index_name
         super().__init__(*args, **kwargs)
 
     @property
-    def tracecount(self):
-        """Return a number of indexed traces."""
-        return len(self._idf)
+    def tracecounts(self):
+        """Return a number of indexed traces for each index."""
+        return [len(self._idf.loc[i]) for i in self.indices]
 
-    def get_df(self, index=None, reset_index=True):
+    @property
+    def name(self):
+        """Return a number of indexed traces."""
+        return self._idf.index.name
+
+    def get_df(self, index=None, reset=True):
         """Return index DataFrame.
 
         Parameters
         ----------
         index : array-like, optional
             Subset of indices to loc from DataFrame. If None, get all the DataFrame.
-        reset_index : bool, default to True
-            Reset noname DataFrame index.
+        reset : bool, default to True
+            Reset named DataFrame index.
 
         Returns
         -------
-        df : pandas.DataFrame
+        df : DataFrame
             Index DataFrame.
         """
         if index is None:
@@ -62,8 +67,8 @@ class TraceIndex(DatasetIndex):
         else:
             df = self._idf.loc[index]
 
-        if reset_index:
-            return df.reset_index(drop=self.index_name is None)
+        if reset:
+            return df.reset_index(drop=self.name is None)
 
         return df
 
@@ -73,9 +78,9 @@ class TraceIndex(DatasetIndex):
         Parameters
         ----------
         args : misc
-            Positional arguments to ```pandas.DatFrame.head```.
+            Positional arguments to ```DataFrame.head```.
         kwargs : dict
-            Named arguments to ```pandas.DatFrame.head```.
+            Named arguments to ```DataFrame.head```.
 
         Returns
         -------
@@ -89,9 +94,9 @@ class TraceIndex(DatasetIndex):
         Parameters
         ----------
         args : misc
-            Positional arguments to ```pandas.DatFrame.tail```.
+            Positional arguments to ```DataFrame.tail```.
         kwargs : dict
-            Named arguments to ```pandas.DatFrame.tail```.
+            Named arguments to ```pDataFrame.tail```.
 
         Returns
         -------
@@ -108,31 +113,31 @@ class TraceIndex(DatasetIndex):
         """Drop duplicated ('FieldRecord', 'TraceNumber') pairs."""
         subset = [('FieldRecord', ''), ('TraceNumber', '')]
         df = self.get_df().drop_duplicates(subset=subset, keep=keep)
-        df.set_index(self.index_name, inplace=True)
+        df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
-        return type(self).from_index(index=indices, idf=df, index_name=self.index_name)
+        return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
     def merge(self, x, **kwargs):
         """Merge two DataFrameIndex on common columns.
 
         Parameters
         ----------
-        x : pandas.DataFrame
+        x : DataFrame
             DataFrame to merge with.
         kwargs : dict
-            Named argumets to ```pandas.DataFrame.merge```.
+            Named arguments to ```DataFrame.merge```.
 
         Returns
         -------
-        df : pandas.DataFrame
+        df : DataFrame
             Merged DataFrame
         """
         idf = self.get_df()
         xdf = x.get_df()
         df = idf.merge(xdf, **kwargs)
-        df.set_index(self.index_name, inplace=True)
+        df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
-        return type(self).from_index(index=indices, idf=df, index_name=self.index_name)
+        return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
     def build_index(self, index=None, idf=None, **kwargs):
         """Build index."""
@@ -140,16 +145,16 @@ class TraceIndex(DatasetIndex):
             if idf is not None:
                 return self.build_from_index(index, idf)
             idf = index.get_df()
-            if self.index_name is not None:
-                idf.set_index(self.index_name, inplace=True)
+            if self.name is not None:
+                idf.set_index(self.name, inplace=True)
 
             self._idf = idf.sort_index()
             return self._idf.index.unique()
 
         df = self.build_df(**kwargs)
         df.reset_index(drop=df.index.name is None, inplace=True)
-        if self.index_name is not None:
-            df.set_index(self.index_name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
 
         self._idf = df.sort_index()
         return self._idf.index.unique()
@@ -167,8 +172,8 @@ class TraceIndex(DatasetIndex):
         return index
 
     def create_subset(self, index):
-        """Return a new DataFrameIndex based on the subset of indices given."""
-        return type(self).from_index(index=index, idf=self._idf, index_name=self.index_name)
+        """Return a new Index based on the subset of indices given."""
+        return type(self).from_index(index=index, idf=self._idf, index_name=self.name)
 
 
 class SegyFilesIndex(TraceIndex):
@@ -179,7 +184,7 @@ class SegyFilesIndex(TraceIndex):
     name : str
         Name that will be associated with traces of SEGY files.
     kwargs : dict
-        Named argumets for ```batchflow.FilesIndex```.
+        Named arguments for ```batchflow.FilesIndex```.
 
     Attributes
     ----------
@@ -187,7 +192,7 @@ class SegyFilesIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
         a number of extra_headers if specified.
@@ -205,7 +210,7 @@ class CustomIndex(TraceIndex):
     name : str
         Any segyio.TraceField keyword that will be set as index.
     kwargs : dict
-        Named argumets for ```batchflow.FilesIndex````.
+        Named arguments for ```batchflow.FilesIndex````.
 
     Attributes
     ----------
@@ -213,7 +218,7 @@ class CustomIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
         a number of extra_headers if specified.
@@ -234,7 +239,7 @@ class KNNIndex(TraceIndex):
     n_neighbors : int
         Group size parameter.
     kwargs : dict
-        Named argumets for ```batchflow.FilesIndex````.
+        Named arguments for ```batchflow.FilesIndex````.
 
     Attributes
     ----------
@@ -242,7 +247,7 @@ class KNNIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Columns include FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
         a number of extra_headers if specified.
@@ -252,7 +257,7 @@ class KNNIndex(TraceIndex):
         super().__init__(*args, **kwargs)
 
     def build_df(self, n_neighbors, **kwargs):
-        """Build dataframe."""
+        """Build DataFrame."""
         extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
         kwargs['extra_headers'] = list(set(extra_headers + ['CDP_X', 'CDP_Y']))
         field_index = FieldIndex(**kwargs)
@@ -267,7 +272,7 @@ class KNNIndex(TraceIndex):
 
             dfs.append(df.iloc[np.hstack(indices)])
         df = pd.concat(dfs).reset_index(drop=True)
-        indices = np.repeat(np.arange(field_index.tracecount), n_neighbors)
+        indices = np.repeat(np.arange(sum(field_index.tracecounts)), n_neighbors)
         df['KNN'] = indices
         return df
 
@@ -278,8 +283,8 @@ class FieldIndex(TraceIndex):
     Parameters
     ----------
     kwargs : dict
-        Named argumets for ```build_df```` method.
-        Can be either a set of ```dfr```, ```dfs```, ```dfx``` argumets for
+        Named arguments for ```build_df```` method.
+        Can be either a set of ```dfr```, ```dfs```, ```dfx``` arguments for
         building index from SPS files, or named arguments for ```batchflow.FilesIndex```
         for building index from SEGY files.
 
@@ -289,7 +294,7 @@ class FieldIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Set of columns includes FieldRecord, TraceNumber, TRACE_SEQUENCE_FILE, file_id and
         a number of extra_headers for index built from SEGY files or SPS file columns for index
@@ -305,11 +310,11 @@ class BinsIndex(TraceIndex):
 
     Parameters
     ----------
-    dfr : pandas.DataFrame
+    dfr : DataFrame
         SPS R file data.
-    dfs : pandas.DataFrame
+    dfs : DataFrame
         SPS S file data.
-    dfx : pandas.DataFrame
+    dfx : DataFrame
         SPS X file data.
     bin_size : scalar or tuple of scalars
         Grid bin size.
@@ -326,7 +331,7 @@ class BinsIndex(TraceIndex):
         Name of the DataFrame index.
     meta : dict
         Metadata about index.
-    _idf : pandas.DataFrame
+    _idf : DataFrame
         DataFrame with rows corresponding to seismic traces and columns with metadata about
         traces. Set of columns includes FieldRecord, TraceNumber and extra SPS file columns.
     """
@@ -335,7 +340,7 @@ class BinsIndex(TraceIndex):
         super().__init__(*args, **kwargs)
 
     def build_df(self, **kwargs):
-        """Build dataframe."""
+        """Build DataFrame."""
         df, meta = bt.make_bin_index(**kwargs)
         self.meta.update(meta)
         return df

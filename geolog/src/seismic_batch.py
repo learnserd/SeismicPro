@@ -126,14 +126,14 @@ class SeismicBatch(Batch):
 
     Parameters
     ----------
-    index : DataFrameIndex
+    index : TraceIndex
         Unique identifiers for sets of seismic traces.
     preloaded : tuple, optional
         Data to put in the batch if given. Defaults to ``None``.
 
     Attributes
     ----------
-    index : DataFrameIndex
+    index : TraceIndex
         Unique identifiers for sets of seismic traces.
     meta : dict
         Metadata about batch components.
@@ -360,12 +360,12 @@ class SeismicBatch(Batch):
 
         path = os.path.join(path, str(index) + '.sgy')
 
-        df = self.index.get_df([index], reset_index=False)
+        df = self.index.get_df([index], reset=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
-        df.reset_index(drop=self.index.index_name is None, inplace=True)
+        df.reset_index(drop=self.index.name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
         df = df[segy_headers]
@@ -377,13 +377,13 @@ class SeismicBatch(Batch):
         """Dump data to segy file."""
         data = np.vstack(getattr(self, src))
 
-        df = self.index.get_df(reset_index=False)
+        df = self.index.get_df(reset=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df.reset_index(drop=self.index.index_name is None, inplace=True)
+        df.reset_index(drop=self.index.name is None, inplace=True)
         headers = list(set(df.columns.levels[0]) - set(FILE_DEPENDEND_COLUMNS))
         segy_headers = [h for h in headers if hasattr(segyio.TraceField, h)]
         df = df[segy_headers]
@@ -422,14 +422,14 @@ class SeismicBatch(Batch):
         if columns is None:
             columns = PICKS_FILE_HEADERS
 
-        df = self.index.get_df(reset_index=False)
+        df = self.index.get_df(reset=False)
         sort_by = self.meta[traces]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
         df['timeOffset'] = data
-        df = df.reset_index(drop=self.index.index_name is None)[columns]
+        df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
         df.to_csv(path, index=False)
         return self
@@ -468,8 +468,8 @@ class SeismicBatch(Batch):
         idf = self.index.get_df()
 
         df = idf.merge(df, how='left')
-        if self.index.index_name is not None:
-            df = df.set_index(self.index.index_name)
+        if self.index.name is not None:
+            df = df.set_index(self.index.name)
 
         res = [df.loc[i, 'timeOffset'].values for i in self.indices]
         setattr(self, components, res)
@@ -502,10 +502,10 @@ class SeismicBatch(Batch):
         all_traces = np.concatenate(getattr(batch, dst))[order]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
 
-        if self.index.index_name is None:
+        if self.index.name is None:
             res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
         else:
-            lens = [len(self.index.get_df(i, reset_index=False)) for i in self.indices]
+            lens = self.index.tracecounts
             res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
         setattr(self, dst, res)

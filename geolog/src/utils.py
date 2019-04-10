@@ -278,7 +278,7 @@ def merge_segy_files(output_path, **kwargs):
     spec = segyio.spec()
     spec.sorting = None
     spec.format = 1
-    spec.tracecount = segy_index.tracecount
+    spec.tracecount = sum(segy_index.tracecounts)
     with segyio.open(segy_index.indices[0], strict=False) as file:
         spec.samples = file.samples
 
