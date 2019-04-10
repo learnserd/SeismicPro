@@ -496,7 +496,7 @@ class SeismicBatch(Batch):
         segy_index = SegyFilesIndex(self.index, name=src)
         sdf = segy_index.get_df()
         sdf['order'] = np.arange(len(sdf))
-        order = self.index.get_df().merge(sdf, on=('TraceNumber', 'FieldRecord'))['order']
+        order = self.index.get_df().merge(sdf)['order']
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
         all_traces = np.concatenate(getattr(batch, dst))[order]
