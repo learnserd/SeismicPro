@@ -104,10 +104,23 @@ class TraceIndex(DatasetIndex):
         """
         return self._idf.tail(*args, **kwargs)
 
-    def duplicated(self):
-        """Get mask of duplicated ('FieldRecord', 'TraceNumber') pairs."""
+    def duplicated(self, keep='first'):
+        """Get mask of duplicated ('FieldRecord', 'TraceNumber') pairs.
+
+        Parameters
+        ----------
+        keep :  {‘first’, ‘last’, False}, default ‘first’
+            ‘first’ : Mark duplicates as True except for the first occurrence.
+            ‘last’ : Mark duplicates as True except for the last occurrence.
+            False : Mark all duplicates as True.
+
+        Returns
+        -------
+        mask : Series
+            Mask of duplicated items.
+        """
         subset = [('FieldRecord', ''), ('TraceNumber', '')]
-        return self._idf.duplicated(subset=subset)
+        return self.get_df().duplicated(subset=subset, keep=keep)
 
     def drop_duplicates(self, keep='first'):
         """Drop duplicated ('FieldRecord', 'TraceNumber') pairs."""
