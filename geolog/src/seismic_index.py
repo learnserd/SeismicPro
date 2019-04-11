@@ -40,7 +40,7 @@ class TraceIndex(DatasetIndex):
     @property
     def tracecounts(self):
         """Return a number of indexed traces for each index."""
-        return [len(self._idf.loc[i]) for i in self.indices]
+        return np.array([len(self._idf.loc[i]) for i in self.indices])
 
     @property
     def name(self):
@@ -103,6 +103,31 @@ class TraceIndex(DatasetIndex):
         Last n rows of the index DataFrame.
         """
         return self._idf.tail(*args, **kwargs)
+
+    def filter(self, columns, cond):
+        """Filter DataFrame by condition. Only rows that meet the condition will kept.
+
+        Parameters
+        ----------
+        columns : str, tuple or list
+            Group of columns that should meet the condition.
+        cond : callable
+            Condition to be evaluated.
+
+        Returns
+        -------
+        index : type(self)
+            Filtered index.
+        """
+        df = self.get_df()
+        if isinstance(df[columns], pd.Series):
+            df = df.loc[df[columns].apply(cond)]
+        else:
+            df = df.loc[df[columns].apply(cond, axis='columns')]
+
+        df.set_index(self.name, inplace=True)
+        indices = df.index.unique().sort_values()
+        return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
     def duplicated(self, keep='first'):
         """Get mask of duplicated ('FieldRecord', 'TraceNumber') pairs.
@@ -285,7 +310,7 @@ class KNNIndex(TraceIndex):
 
             dfs.append(df.iloc[np.hstack(indices)])
         df = pd.concat(dfs).reset_index(drop=True)
-        indices = np.repeat(np.arange(sum(field_index.tracecounts)), n_neighbors)
+        indices = np.repeat(np.arange(field_index.tracecounts.sum()), n_neighbors)
         df['KNN'] = indices
         return df
 
