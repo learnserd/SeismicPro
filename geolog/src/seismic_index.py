@@ -125,7 +125,9 @@ class TraceIndex(DatasetIndex):
         else:
             df = df.loc[df[columns].apply(cond, axis='columns')]
 
-        df.set_index(self.name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
+
         indices = df.index.unique().sort_values()
         return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
