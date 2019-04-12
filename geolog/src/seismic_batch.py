@@ -75,16 +75,17 @@ def apply_to_each_component(method):
     decorator : callable
         Decorated method.
     """
-    def decorator(self, *args, src, dst, **kwargs):
+    def decorator(self, *args, src, dst=None, **kwargs):
         """Returned decorator."""
         if isinstance(src, str):
             src = (src, )
-
-        if isinstance(dst, str):
+        if dst is None:
+            dst = src
+        elif isinstance(dst, str):
             dst = (dst, )
 
         res = []
-        for isrc, idst in list(zip(src, dst)):
+        for isrc, idst in zip(src, dst):
             res.append(method(self, *args, src=isrc, dst=idst, **kwargs))
         return self if isinstance(res[0], SeismicBatch) else res
     return decorator
@@ -631,9 +632,9 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    @inbatch_parallel(init="_init_component", post='_post_filter_traces', target="threads")
+    @inbatch_parallel(init="indices", post='_post_filter_traces', target="threads")
     @apply_to_each_component
-    def zero_traces(self, index, num_zero, src, dst):
+    def zero_traces(self, index, num_zero, src, **kwargs):
         """Drop traces with sequence of zeros longer than ```num_zero```.
 
         Parameters
@@ -651,7 +652,7 @@ class SeismicBatch(Batch):
             False  - if given trace hasn't got zero subtrace
             True - if given trace has got zero subtrace
         """
-        _ = dst
+        _ = kwargs
         pos = self.get_pos(None, src, index)
         traces = getattr(self, src)[pos]
         mask = list()
@@ -663,7 +664,7 @@ class SeismicBatch(Batch):
                 mask.append(np.max(diff_zeros) > num_zero)
         return mask
 
-    def _post_filter_traces(self, list_of_res, dst, *args, **kwargs):
+    def _post_filter_traces(self, list_of_res, dst=None, *args, **kwargs):
         if any_action_failed(list_of_res):
             all_errors = [error for error in list_of_res if isinstance(error, Exception)]
             print(all_errors)
@@ -674,13 +675,15 @@ class SeismicBatch(Batch):
 
             if isinstance(src, str):
                 src = (src, )
-            if isinstance(dst, str):
+            if dst is None:
+                dst = src
+            elif isinstance(dst, str):
                 dst = (dst, )
 
             list_of_res = np.array(list_of_res).sum(axis=1, dtype=bool)
             self.index._idf = self.index._idf.loc[~list_of_res.ravel()] # pylint: disable=protected-access
             for index, mask in zip(self.indices, list_of_res):
-                for isrc, idst in list(zip(src, dst)):
+                for isrc, idst in zip(src, dst):
                     pos = self.get_pos(None, isrc, index)
                     traces = getattr(self, isrc)[pos]
                     getattr(self, idst)[pos] = traces[~mask]
