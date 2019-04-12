@@ -8,7 +8,7 @@ from scipy import signal
 import pywt
 import segyio
 
-from ..batchflow import action, inbatch_parallel, Batch
+from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
@@ -83,10 +83,10 @@ def apply_to_each_component(method):
         if isinstance(dst, str):
             dst = (dst, )
 
+        res = []
         for isrc, idst in list(zip(src, dst)):
-            method(self, *args, src=isrc, dst=idst, **kwargs)
-
-        return self
+            res.append(method(self, *args, src=isrc, dst=idst, **kwargs))
+        return self if isinstance(res[0], SeismicBatch) else res
     return decorator
 
 def add_actions(actions_dict, template_docstring):
@@ -628,6 +628,62 @@ class SeismicBatch(Batch):
         if pos == 0:
             self.meta[dst]['sorting'] = sort_by
 
+        return self
+
+    @action
+    @inbatch_parallel(init="_init_component", post='_post_filter_traces', target="threads")
+    @apply_to_each_component
+    def zero_traces(self, index, num_zero, src, dst):
+        """Drop traces with sequence of zeros longer than ```num_zero```.
+
+        Parameters
+        ----------
+        num_zero : int
+            Size of the sequence of zeros.
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+
+        Returns
+        -------
+            : array of bool
+            False  - if given trace hasn't got zero subtrace
+            True - if given trace has got zero subtrace
+        """
+        _ = dst
+        pos = self.get_pos(None, src, index)
+        traces = getattr(self, src)[pos]
+        mask = list()
+        for _, trace in enumerate(traces != 0):
+            diff_zeros = np.diff(np.append(np.where(trace)[0], len(trace)))
+            if len(diff_zeros) == 0:
+                mask.append(True)
+            else:
+                mask.append(np.max(diff_zeros) > num_zero)
+        return mask
+
+    def _post_filter_traces(self, list_of_res, dst, *args, **kwargs):
+        if any_action_failed(list_of_res):
+            all_errors = [error for error in list_of_res if isinstance(error, Exception)]
+            print(all_errors)
+            raise ValueError(all_errors)
+        else:
+            _ = args
+            src = kwargs.get('src', None)
+
+            if isinstance(src, str):
+                src = (src, )
+            if isinstance(dst, str):
+                dst = (dst, )
+
+            list_of_res = np.array(list_of_res).sum(axis=1, dtype=bool)
+            self.index._idf = self.index._idf.loc[~list_of_res.ravel()] # pylint: disable=protected-access
+            for index, mask in zip(self.indices, list_of_res):
+                for isrc, idst in list(zip(src, dst)):
+                    pos = self.get_pos(None, isrc, index)
+                    traces = getattr(self, isrc)[pos]
+                    getattr(self, idst)[pos] = traces[~mask]
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
