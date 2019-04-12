@@ -254,6 +254,7 @@ def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
     spec.tracecount = len(data)
 
     df.columns = [getattr(segyio.TraceField, k) for k in df.columns]
+    df[getattr(segyio.TraceField, 'TRACE_SEQUENCE_FILE')] = np.arange(len(df)) + 1
 
     with segyio.create(path, spec) as file:
         file.trace = data
@@ -290,6 +291,9 @@ def merge_segy_files(output_path, **kwargs):
                 dst.header[i: i + src.tracecount] = src.header
 
             i += src.tracecount
+
+        for j, h in enumerate(dst.header):
+            h.update({segyio.TraceField.TRACE_SEQUENCE_FILE: j + 1})
 
 def merge_picking_files(output_path, **kwargs):
     """Merge picking files into a single file.
