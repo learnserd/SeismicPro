@@ -75,16 +75,17 @@ def apply_to_each_component(method):
     decorator : callable
         Decorated method.
     """
-    def decorator(self, *args, src, dst, **kwargs):
+    def decorator(self, *args, src, dst=None, **kwargs):
         """Returned decorator."""
         if isinstance(src, str):
             src = (src, )
-
-        if isinstance(dst, str):
+        if dst is None:
+            dst = src
+        elif isinstance(dst, str):
             dst = (dst, )
 
         res = []
-        for isrc, idst in list(zip(src, dst)):
+        for isrc, idst in zip(src, dst):
             res.append(method(self, *args, src=isrc, dst=idst, **kwargs))
         return self if isinstance(res[0], SeismicBatch) else res
     return decorator
@@ -126,14 +127,14 @@ class SeismicBatch(Batch):
 
     Parameters
     ----------
-    index : DataFrameIndex
+    index : TraceIndex
         Unique identifiers for sets of seismic traces.
     preloaded : tuple, optional
         Data to put in the batch if given. Defaults to ``None``.
 
     Attributes
     ----------
-    index : DataFrameIndex
+    index : TraceIndex
         Unique identifiers for sets of seismic traces.
     meta : dict
         Metadata about batch components.
@@ -157,7 +158,40 @@ class SeismicBatch(Batch):
             if comp not in self.meta:
                 self.meta[comp] = dict()
 
+            if self.components is None or comp not in self.components:
+                self.add_components(comp)
+
         return self.indices
+
+    def _post_filter_by_mask(self, list_of_res, *args, **kwargs):
+        if any_action_failed(list_of_res):
+            all_errors = [error for error in list_of_res if isinstance(error, Exception)]
+            print(all_errors)
+            raise ValueError(all_errors)
+        else:
+            _ = args
+            src = kwargs.get('src', None)
+
+            if isinstance(src, str):
+                src = (src, )
+
+            mask = np.array(list_of_res).sum(axis=1, dtype=bool)
+
+            new_idf = self.index._idf.loc[mask.ravel()] # pylint: disable=protected-access
+            new_index = new_idf.index.unique()
+            batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
+
+            batch = type(self)(batch_index)
+            for comp in self.components:
+                setattr(batch, comp, np.array([None] * len(batch.index)))
+            batch.add_components(self.components)
+
+            for i, index in enumerate(new_index):
+                for isrc in batch.components:
+                    pos = self.get_pos(None, isrc, index)
+                    new_data = getattr(self, isrc)[pos][mask[pos]]
+                    getattr(batch, isrc)[i] = new_data
+        return batch
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
@@ -360,7 +394,7 @@ class SeismicBatch(Batch):
 
         path = os.path.join(path, str(index) + '.sgy')
 
-        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        df = self.index.get_df([index], reset=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
@@ -377,7 +411,7 @@ class SeismicBatch(Batch):
         """Dump data to segy file."""
         data = np.vstack(getattr(self, src))
 
-        df = self.index._idf # pylint: disable=protected-access
+        df = self.index.get_df(reset=False)
         sort_by = self.meta[src]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
@@ -422,7 +456,7 @@ class SeismicBatch(Batch):
         if columns is None:
             columns = PICKS_FILE_HEADERS
 
-        df = self.index._idf # pylint: disable=protected-access
+        df = self.index.get_df(reset=False)
         sort_by = self.meta[traces]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
@@ -465,9 +499,7 @@ class SeismicBatch(Batch):
         """Load picking from file."""
         df = pd.read_csv(src)
         df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
-        idf = self.index._idf # pylint: disable=protected-access
-        if self.index.name is not None:
-            idf = idf.reset_index()
+        idf = self.index.get_df()
 
         df = idf.merge(df, how='left')
         if self.index.name is not None:
@@ -475,6 +507,7 @@ class SeismicBatch(Batch):
 
         res = [df.loc[i, 'timeOffset'].values for i in self.indices]
         setattr(self, components, res)
+        self.add_components(components)
         return self
 
     @apply_to_each_component
@@ -496,23 +529,20 @@ class SeismicBatch(Batch):
             Batch with loaded components.
         """
         segy_index = SegyFilesIndex(self.index, name=src)
-        idf = segy_index._idf # pylint: disable=protected-access
-        order = np.hstack([np.where(idf.index == i)[0] for i in segy_index.indices])
+        sdf = segy_index.get_df()
+        sdf['order'] = np.arange(len(sdf))
+        order = self.index.get_df().merge(sdf)['order']
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
-        all_traces = np.concatenate(getattr(batch, dst))[np.argsort(order)]
+        all_traces = np.concatenate(getattr(batch, dst))[order]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
+        self.add_components(dst)
 
-        idf = self.index._idf # pylint: disable=protected-access
-        if idf.index.name is None:
-            items = [self.get_pos(None, "indices", i) for i in idf.index]
-            res = np.array(list(np.expand_dims(all_traces, 1)[items]) + [None])[:-1]
+        if self.index.name is None:
+            res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
         else:
-            res = np.array([None] * len(self))
-            for i in self.indices:
-                ipos = self.get_pos(None, "indices", i)
-                items = np.where(idf.index == i)[0]
-                res[ipos] = all_traces[items]
+            lens = self.index.tracecounts
+            res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
         setattr(self, dst, res)
         self.meta[dst]['sorting'] = None
@@ -525,7 +555,7 @@ class SeismicBatch(Batch):
         _ = src, args
         pos = self.get_pos(None, "indices", index)
         path = index
-        trace_seq = self.index._idf.loc[index][('TRACE_SEQUENCE_FILE', src)] # pylint: disable=protected-access
+        trace_seq = self.index.get_df([index])[('TRACE_SEQUENCE_FILE', src)]
         if tslice is None:
             tslice = slice(None)
 
@@ -622,7 +652,7 @@ class SeismicBatch(Batch):
         """
         _ = args
         pos = self.get_pos(None, src, index)
-        df = self.index._idf.loc[[index]] # pylint: disable=protected-access
+        df = self.index.get_df([index])
         order = np.argsort(df[sort_by].tolist())
         getattr(self, dst)[pos] = getattr(self, src)[pos][order]
         if pos == 0:
@@ -631,9 +661,9 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    @inbatch_parallel(init="_init_component", post='_post_filter_traces', target="threads")
+    @inbatch_parallel(init="indices", post='_post_filter_by_mask', target="threads")
     @apply_to_each_component
-    def zero_traces(self, index, num_zero, src, dst):
+    def drop_zero_traces(self, index, num_zero, src, **kwargs):
         """Drop traces with sequence of zeros longer than ```num_zero```.
 
         Parameters
@@ -642,49 +672,23 @@ class SeismicBatch(Batch):
             Size of the sequence of zeros.
         src : str, array-like
             The batch components to get the data from.
-        dst : str, array-like
-            The batch components to put the result in.
 
         Returns
         -------
-            : array of bool
-            False  - if given trace hasn't got zero subtrace
-            True - if given trace has got zero subtrace
+            : SeismicBatch
+            Batch without dropped traces.
         """
-        _ = dst
+        _ = kwargs
         pos = self.get_pos(None, src, index)
         traces = getattr(self, src)[pos]
         mask = list()
         for _, trace in enumerate(traces != 0):
             diff_zeros = np.diff(np.append(np.where(trace)[0], len(trace)))
             if len(diff_zeros) == 0:
-                mask.append(True)
+                mask.append(False)
             else:
-                mask.append(np.max(diff_zeros) > num_zero)
+                mask.append(np.max(diff_zeros) < num_zero)
         return mask
-
-    def _post_filter_traces(self, list_of_res, dst, *args, **kwargs):
-        if any_action_failed(list_of_res):
-            all_errors = [error for error in list_of_res if isinstance(error, Exception)]
-            print(all_errors)
-            raise ValueError(all_errors)
-        else:
-            _ = args
-            src = kwargs.get('src', None)
-
-            if isinstance(src, str):
-                src = (src, )
-            if isinstance(dst, str):
-                dst = (dst, )
-
-            list_of_res = np.array(list_of_res).sum(axis=1, dtype=bool)
-            self.index._idf = self.index._idf.loc[~list_of_res.ravel()] # pylint: disable=protected-access
-            for index, mask in zip(self.indices, list_of_res):
-                for isrc, idst in list(zip(src, dst)):
-                    pos = self.get_pos(None, isrc, index)
-                    traces = getattr(self, isrc)[pos]
-                    getattr(self, idst)[pos] = traces[~mask]
-        return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:
@@ -714,8 +718,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, figsize=None, save_to=None, dpi=None, **kwargs):
-        """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
+    def seismic_plot(self, src, index, **kwargs):
+        """Plot seismic traces.
 
         Parameters
         ----------
@@ -723,12 +727,6 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        figsize :  tuple of integers, optional, default: None
-            Image figsize as in matplotlib.
-        save_to : str, default: None
-            Path to save image.
-        dpi : int, optional, default: None
-            The resolution argument for matplotlib savefig.
         kwargs: dict
             Additional keyword arguments for plot.
 
@@ -742,10 +740,9 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        seismic_plot(arrs, names=names, figsize=figsize, save_to=save_to, dpi=dpi, **kwargs)
+        seismic_plot(arrs=arrs, names=names, **kwargs)
 
-    def spectrum_plot(self, src, index, frame, rate, max_freq=None,
-                      figsize=None, save_to=None, **kwargs):
+    def spectrum_plot(self, src, index, **kwargs):
         """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
         Parameters
@@ -754,18 +751,8 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        frame : tuple
-            List of slices that frame region of interest.
-        rate : scalar
-            Sampling rate.
-        max_freq : scalar
-            Upper frequence limit.
-        figsize : array-like, optional
-            Output plot size.
-        save_to : str or None, optional
-            If not None, save plot to given path.
         kwargs : dict
-            Named argumets to matplotlib.pyplot.imshow
+            Additional keyword arguments for plot.
 
         Returns
         -------
@@ -777,5 +764,4 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
-                      names=names, figsize=figsize, save_to=save_to, **kwargs)
+        spectrum_plot(arrs=arrs, names=names, **kwargs)
