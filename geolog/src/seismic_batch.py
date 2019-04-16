@@ -138,6 +138,15 @@ class SeismicBatch(Batch):
         Unique identifiers for sets of seismic traces.
     meta : dict
         Metadata about batch components.
+    components : tuple
+        Array containing all component's name. Updated only by ``_init_component`` function
+        if new component comes from ``dst`` or by ``load`` function.
+
+    Note
+    ----
+    There are only two ways to add a new components to ``components`` attribute.
+    1. Using parameter ``components`` in ``load``.
+    2. Using parameter ``dst`` with init function named ``_init_component``.
     """
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
@@ -163,9 +172,27 @@ class SeismicBatch(Batch):
 
         return self.indices
 
-    def _post_filter_by_mask(self, list_of_res, *args, **kwargs):
-        if any_action_failed(list_of_res):
-            all_errors = [error for error in list_of_res if isinstance(error, Exception)]
+    def _post_filter_by_mask(self, mask, *args, **kwargs):
+        """Component filtration using the union of all the received masks.
+
+        Parameters
+        ----------
+        mask : list
+            List of masks if ``src`` is ``str``
+            or list of lists if ``src`` is list.
+
+        Returns
+        -------
+            : SeismicBatch
+            New batch class of filtered components.
+
+        Note
+        ----
+        All components will be changed with given mask and during the proccess,
+        new SeismicBatch instance will be created.
+        """
+        if any_action_failed(mask):
+            all_errors = [error for error in mask if isinstance(error, Exception)]
             print(all_errors)
             raise ValueError(all_errors)
         else:
@@ -175,9 +202,9 @@ class SeismicBatch(Batch):
             if isinstance(src, str):
                 src = (src, )
 
-            mask = np.array(list_of_res).sum(axis=1, dtype=bool)
+            mask = np.array(mask).sum(axis=1, dtype=bool)
 
-            new_idf = self.index._idf.loc[mask.ravel()] # pylint: disable=protected-access
+            new_idf = self.index.get_df(index=mask.ravel(), reset=False)
             new_index = new_idf.index.unique()
             batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
 
