@@ -8,7 +8,7 @@ from scipy import signal
 import pywt
 import segyio
 
-from ..batchflow import action, inbatch_parallel, Batch
+from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
@@ -75,18 +75,19 @@ def apply_to_each_component(method):
     decorator : callable
         Decorated method.
     """
-    def decorator(self, *args, src, dst, **kwargs):
+    def decorator(self, *args, src, dst=None, **kwargs):
         """Returned decorator."""
         if isinstance(src, str):
             src = (src, )
-
-        if isinstance(dst, str):
+        if dst is None:
+            dst = src
+        elif isinstance(dst, str):
             dst = (dst, )
 
-        for isrc, idst in list(zip(src, dst)):
-            method(self, *args, src=isrc, dst=idst, **kwargs)
-
-        return self
+        res = []
+        for isrc, idst in zip(src, dst):
+            res.append(method(self, *args, src=isrc, dst=idst, **kwargs))
+        return self if isinstance(res[0], SeismicBatch) else res
     return decorator
 
 def add_actions(actions_dict, template_docstring):
@@ -137,6 +138,15 @@ class SeismicBatch(Batch):
         Unique identifiers for sets of seismic traces.
     meta : dict
         Metadata about batch components.
+    components : tuple
+        Array containing all component's name. Updated only by ``_init_component`` function
+        if new component comes from ``dst`` or by ``load`` function.
+
+    Note
+    ----
+    There are only two ways to add a new components to ``components`` attribute.
+    1. Using parameter ``components`` in ``load``.
+    2. Using parameter ``dst`` with init function named ``_init_component``.
     """
     def __init__(self, index, preloaded=None):
         super().__init__(index, preloaded=preloaded)
@@ -157,7 +167,58 @@ class SeismicBatch(Batch):
             if comp not in self.meta:
                 self.meta[comp] = dict()
 
+            if self.components is None or comp not in self.components:
+                self.add_components(comp)
+
         return self.indices
+
+    def _post_filter_by_mask(self, mask, *args, **kwargs):
+        """Component filtration using the union of all the received masks.
+
+        Parameters
+        ----------
+        mask : list
+            List of masks if ``src`` is ``str``
+            or list of lists if ``src`` is list.
+
+        Returns
+        -------
+            : SeismicBatch
+            New batch class of filtered components.
+
+        Note
+        ----
+        All components will be changed with given mask and during the proccess,
+        new SeismicBatch instance will be created.
+        """
+        if any_action_failed(mask):
+            all_errors = [error for error in mask if isinstance(error, Exception)]
+            print(all_errors)
+            raise ValueError(all_errors)
+        else:
+            _ = args
+            src = kwargs.get('src', None)
+
+            if isinstance(src, str):
+                src = (src, )
+
+            mask = np.array(mask).sum(axis=1, dtype=bool)
+
+            new_idf = self.index.get_df(index=mask.ravel(), reset=False)
+            new_index = new_idf.index.unique()
+            batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
+
+            batch = type(self)(batch_index)
+            for comp in self.components:
+                setattr(batch, comp, np.array([None] * len(batch.index)))
+            batch.add_components(self.components)
+
+            for i, index in enumerate(new_index):
+                for isrc in batch.components:
+                    pos = self.get_pos(None, isrc, index)
+                    new_data = getattr(self, isrc)[pos][mask[pos]]
+                    getattr(batch, isrc)[i] = new_data
+        return batch
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
@@ -473,6 +534,7 @@ class SeismicBatch(Batch):
 
         res = [df.loc[i, 'timeOffset'].values for i in self.indices]
         setattr(self, components, res)
+        self.add_components(components)
         return self
 
     @apply_to_each_component
@@ -501,6 +563,7 @@ class SeismicBatch(Batch):
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
         all_traces = np.concatenate(getattr(batch, dst))[order]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
+        self.add_components(dst)
 
         if self.index.name is None:
             res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
@@ -623,6 +686,36 @@ class SeismicBatch(Batch):
             self.meta[dst]['sorting'] = sort_by
 
         return self
+
+    @action
+    @inbatch_parallel(init="indices", post='_post_filter_by_mask', target="threads")
+    @apply_to_each_component
+    def drop_zero_traces(self, index, num_zero, src, **kwargs):
+        """Drop traces with sequence of zeros longer than ```num_zero```.
+
+        Parameters
+        ----------
+        num_zero : int
+            Size of the sequence of zeros.
+        src : str, array-like
+            The batch components to get the data from.
+
+        Returns
+        -------
+            : SeismicBatch
+            Batch without dropped traces.
+        """
+        _ = kwargs
+        pos = self.get_pos(None, src, index)
+        traces = getattr(self, src)[pos]
+        mask = list()
+        for _, trace in enumerate(traces != 0):
+            diff_zeros = np.diff(np.append(np.where(trace)[0], len(trace)))
+            if len(diff_zeros) == 0:
+                mask.append(False)
+            else:
+                mask.append(np.max(diff_zeros) < num_zero)
+        return mask
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:
