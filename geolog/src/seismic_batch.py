@@ -2,7 +2,6 @@
 import os
 from textwrap import dedent
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
