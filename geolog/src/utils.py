@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches
+from sklearn import preprocessing
 import segyio
 
 from . import seismic_index as si
@@ -223,6 +224,109 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     if save_to is not None:
         plt.savefig(save_to)
+
+    plt.show()
+
+def spectral_statistics(data, rate):
+    """Calculate basic statistics (rms, sts, total variance, mode) of trace
+    power spectrum.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    rate : scalar
+        Sampling rate.
+
+    Returns
+    -------
+    stats : array
+        Arrays of rms, sts, total variance, mode for each trace.
+    """
+    spec = abs(np.fft.rfft(data, axis=1))**2
+    var = np.sum(abs(np.diff(spec, axis=1)), axis=1)
+    spec = spec / spec.sum(axis=1).reshape((-1, 1))
+    freqs = np.fft.rfftfreq(len(data[0]), d=rate)
+    peak = freqs[np.argmax(spec, axis=1)]
+    mean = (freqs * spec).sum(axis=1)
+    mean2 = (freqs**2 * spec).sum(axis=1)
+    std = np.sqrt(mean2 - mean**2)
+    return (np.sqrt(mean2), std, var, peak)
+
+def time_statistics(data):
+    """Calculate basic statistics (rms, sts, total variance, mode) for traces.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    rate : scalar
+        Sampling rate.
+
+    Returns
+    -------
+    stats : array
+        Arrays of rms, sts, total variance, mode for each trace.
+    """
+    peak = np.max(abs(data), axis=1)
+    mean = np.mean(abs(data), axis=1)
+    std = np.std(data, axis=1)
+    mean2 = std**2 + mean**2
+    var = np.sum(abs(np.diff(data, axis=1)), axis=1)
+    return (np.sqrt(mean2), std, var, peak)
+
+def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwargs):
+    """Show statistics in 2D plots.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    domain : str, 'time' or 'frequency'
+        Domain to calculate statistics in.
+    rate : scalar
+        Sampling rate.
+    iline : array-like
+        Array of inline numbers.
+    xline : array-like
+        Array of crossline numbers.
+    figsize : array-like, optional
+        Output plot size.
+    kwargs : dict
+        Named argumets to matplotlib.pyplot.imshow
+
+    Returns
+    -------
+    Plots of statistics distribution.
+    """
+    if domain == 'time':
+        vals = time_statistics(data)
+    elif domain == 'frequency':
+        vals = spectral_statistics(data, rate)
+    else:
+        raise ValueError('Unknown domain.')
+
+    titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
+    le = preprocessing.LabelEncoder()
+    x = le.fit_transform(iline)
+    xc = le.classes_
+    y = le.fit_transform(xline)
+    yc = le.classes_
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    im = np.zeros((len(xc), len(yc)))
+    for i, ax in enumerate(axes.reshape(-1)):
+        im[x, y] = vals[i]
+        plot = ax.imshow(im.T, **kwargs)
+        step = len(xc) // 9
+        ax.set_xticks(np.arange(0, len(xc), step))
+        ax.set_xticklabels(xc[::step])
+        step = len(yc) // 9
+        ax.set_yticks(np.arange(0, len(yc), step))
+        ax.set_yticklabels(yc[::step])
+        ax.set_aspect('auto')
+        ax.set_xlabel('INLINE'), ax.set_ylabel('CROSSLINE')
+        ax.set_title(titles[i])
+        fig.colorbar(plot, ax=ax)
 
     plt.show()
 
