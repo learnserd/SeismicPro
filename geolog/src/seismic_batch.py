@@ -14,7 +14,7 @@ from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
 from .utils import IndexTracker, partialmethod, write_segy_file, spectrum_plot, seismic_plot
 
-PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
+PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
 
 ACTIONS_DICT = {
@@ -476,7 +476,8 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.vstack(getattr(self, src)).ravel()
+        data = [trace for ffid in getattr(self, src) for trace in ffid]
+
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -484,12 +485,12 @@ class SeismicBatch(Batch):
             columns = PICKS_FILE_HEADERS
 
         df = self.index.get_df(reset=False)
-        sort_by = self.meta[traces]['sorting']
-        if sort_by is not None:
-            df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
         df['timeOffset'] = data
+        sort_by = self.meta[traces]['sorting']
+        if sort_by is not None:
+            df = df.sort_values(by=sort_by)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
         df.to_csv(path, index=False)
@@ -518,23 +519,15 @@ class SeismicBatch(Batch):
         if fmt.lower() in ['sgy', 'segy']:
             return self._load_segy(src=components, dst=components, **kwargs)
         if fmt == 'picks':
-            return self._load_picking(src=src, components=components)
+            return self._load_picking(components=components)
 
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
-    def _load_picking(self, src, components):
+    def _load_picking(self, components):
         """Load picking from file."""
-        df = pd.read_csv(src)
-        df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
-        idf = self.index.get_df()
-
-        df = idf.merge(df, how='left')
-        if self.index.name is not None:
-            df = df.set_index(self.index.name)
-
-        res = [df.loc[i, 'timeOffset'].values for i in self.indices]
+        idf = self.index._idf # pylint: disable=protected-access
+        res = [idf.loc[i, 'y'].values for i in self.indices]
         setattr(self, components, res)
-        self.add_components(components)
         return self
 
     @apply_to_each_component
