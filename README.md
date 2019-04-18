@@ -1,4 +1,4 @@
-# geolog
+# SeismicPro
 
 Machine learning for field seismic data processing.
 

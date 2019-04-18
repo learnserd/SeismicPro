@@ -187,7 +187,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
     save_to : str or None, optional
         If not None, save plot to given path.
     kwargs : dict
-        Named argumets to matplotlib.pyplot.imshow
+        Named argumets to matplotlib.pyplot.imshow.
 
     Returns
     -------
@@ -296,7 +296,7 @@ def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
     figsize : array-like, optional
         Output plot size.
     kwargs : dict
-        Named argumets to matplotlib.pyplot.imshow
+        Named argumets to matplotlib.pyplot.imshow.
 
     Returns
     -------
