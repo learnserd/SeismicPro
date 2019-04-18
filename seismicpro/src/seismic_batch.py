@@ -150,7 +150,7 @@ class SeismicBatch(Batch):
     2. Using parameter ``dst`` with init function named ``_init_component``.
     """
     def __init__(self, index, *args, preloaded=None, **kwargs):
-        super().__init__(index, preloaded=preloaded)
+        super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.meta = dict()
 
