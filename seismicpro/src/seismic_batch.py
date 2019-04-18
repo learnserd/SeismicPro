@@ -149,7 +149,7 @@ class SeismicBatch(Batch):
     1. Using parameter ``components`` in ``load``.
     2. Using parameter ``dst`` with init function named ``_init_component``.
     """
-    def __init__(self, index, preloaded=None):
+    def __init__(self, index, *args, preloaded=None, **kwargs):
         super().__init__(index, preloaded=preloaded)
         if preloaded is None:
             self.meta = dict()
@@ -747,8 +747,8 @@ class SeismicBatch(Batch):
         return fig, tracker
 
     def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                 pts=None, s=None, c=None, figsize=None,
-                 save_to=None, dpi=None, **kwargs):
+                     pts=None, s=None, c=None, figsize=None,
+                     save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
 
         Parameters
@@ -791,8 +791,8 @@ class SeismicBatch(Batch):
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                 pts=pts, s=s, c=c, figsize=figsize, names=names,
-                 save_to=save_to, dpi=dpi, **kwargs)
+                     pts=pts, s=s, c=c, figsize=figsize, names=names,
+                     save_to=save_to, dpi=dpi, **kwargs)
 
     def spectrum_plot(self, src, index, frame, rate, max_freq=None,
                       figsize=None, save_to=None, **kwargs):
