@@ -275,7 +275,8 @@ def time_statistics(data):
     var = np.sum(abs(np.diff(data, axis=1)), axis=1)
     return (np.sqrt(mean2), std, var, peak)
 
-def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwargs):
+def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
+                    figsize=None, **kwargs):
     """Show statistics in 2D plots.
 
     Parameters
@@ -286,6 +287,8 @@ def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwarg
         Domain to calculate statistics in.
     rate : scalar
         Sampling rate.
+    tslice : slice, default to None
+        Slice of time samples to select from data.
     iline : array-like
         Array of inline numbers.
     xline : array-like
@@ -299,6 +302,9 @@ def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwarg
     -------
     Plots of statistics distribution.
     """
+    if tslice is not None:
+        data = data[:, tslice]
+
     if domain == 'time':
         vals = time_statistics(data)
     elif domain == 'frequency':
@@ -307,11 +313,11 @@ def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwarg
         raise ValueError('Unknown domain.')
 
     titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
-    le = preprocessing.LabelEncoder()
-    x = le.fit_transform(iline)
-    xc = le.classes_
-    y = le.fit_transform(xline)
-    yc = le.classes_
+    enc = preprocessing.LabelEncoder()
+    x = enc.fit_transform(iline)
+    xc = enc.classes_
+    y = enc.fit_transform(xline)
+    yc = enc.classes_
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     im = np.zeros((len(xc), len(yc)))
     for i, ax in enumerate(axes.reshape(-1)):
@@ -324,7 +330,7 @@ def show_statistics(data, domain, iline, xline, rate=None, figsize=None, **kwarg
         ax.set_yticks(np.arange(0, len(yc), step))
         ax.set_yticklabels(yc[::step])
         ax.set_aspect('auto')
-        ax.set_xlabel('INLINE'), ax.set_ylabel('CROSSLINE')
+        ax.set_xlabel('INLINE'), ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
         ax.set_title(titles[i])
         fig.colorbar(plot, ax=ax)
 
