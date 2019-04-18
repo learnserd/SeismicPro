@@ -11,7 +11,20 @@ DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
 def line_inclination(x, y):
-    """Get regression line inclination towards x-axis."""
+    """Get regression line inclination towards x-axis.
+
+    Parameters
+    ----------
+    x : array-like
+        Data x coordinates.
+    y : array-like
+        Data y coordinates.
+
+    Returns
+    -------
+    phi : float
+        Inclination towards x-axis. The value is within (-pi/2, pi/2) range.
+    """
     if np.std(y) < np.std(x):
         reg = LinearRegression().fit(x.reshape((-1, 1)), y)
         return np.arctan(reg.coef_[0])
@@ -21,7 +34,21 @@ def line_inclination(x, y):
     return (np.pi / 2) - np.arctan(reg.coef_[0])
 
 def get_phi(dfr, dfs):
-    """Get median inclination for R and S lines."""
+    """Get median absolute inclination for R and S lines.
+
+    Parameters
+    ----------
+    dfr : pandas.DataFrame
+        Data from R file SPS.
+    dfs : pandas.DataFrame
+        Data from S file SPS.
+
+    Returns
+    -------
+    phi : float
+        Median absolute inclination of R and S lines towards x-axis.
+        The value is within (0, pi/2) range.
+    """
     incl = []
     for _, group in dfs.groupby('sline'):
         x, y = group[['x', 'y']].values.T
@@ -31,8 +58,23 @@ def get_phi(dfr, dfs):
         incl.append(line_inclination(x, y))
     return np.median(np.array(incl) % (np.pi / 2))
 
-def random_bins_shift(pts, bin_size, iters):
-    """Monte-Carlo best shift estimation."""
+def random_bins_shift(pts, bin_size, iters=100):
+    """Monte-Carlo best shift estimation.
+
+    Parameters
+    ----------
+    pts : array-like
+        Point coordinates.
+    bin_size : scalar or tuple of scalars
+        Bin size of 1D or 2D grid.
+    iters : int
+        Number of samples.
+
+    Returns
+    -------
+    shift : float or tuple of floats
+        Optimal grid shift from its default origin that is np.min(pts, axis=0).
+    """
     t = np.max(pts, axis=0).reshape((-1, 1))
     min_unif = np.inf
     best_shift = np.zeros(pts.ndim)
@@ -46,14 +88,33 @@ def random_bins_shift(pts, bin_size, iters):
             h = np.histogram(pts, bins=bins[0])[0]
         else:
             raise ValueError("pts should be ndim = 1 or 2.")
+
         unif = np.std(h[h > 0])
         if unif < min_unif:
             min_unif = unif
             best_shift = shift
+
     return best_shift
 
 def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
-    """Iterative best shift estimation."""
+    """Iterative best shift estimation.
+
+    Parameters
+    ----------
+    pts : array-like
+        Point coordinates.
+    bin_size : scalar or tuple of scalars
+        Bin size of 1D or 2D grid.
+    max_iters : int
+        Maximal number of iterations.
+    eps : float
+        Iterations stop criteria.
+
+    Returns
+    -------
+    shift : float or tuple of floats
+        Optimal grid shift from its default origin that is np.min(pts, axis=0).
+    """
     t = np.max(pts, axis=0).reshape((-1, 1))
     shift = np.zeros(pts.ndim)
     states = []
@@ -81,24 +142,67 @@ def gradient_bins_shift(pts, bin_size, max_iters=10, eps=1e-3):
             move = np.array([xshift])
         else:
             raise ValueError("pts should be ndim = 1 or 2.")
+
         states.append(shift.copy())
         states_std.append(np.std(h[h > 0]))
+
         if np.linalg.norm(move) < bin_size * eps:
             break
+
         shift += move
     if states_std:
         i = np.argmin(states_std)
         return states[i] % bin_size
+
     return shift
 
-def rot_2d(arr, phi):
-    """Rotate vector."""
+def rotate_2d(arr, phi):
+    """Rotate 2D vector counter-clockwise.
+
+    Parameters
+    ----------
+    arr : array-like
+        Vector coordinates.
+    phi : radians
+        Rotation angle.
+
+    Returns
+    -------
+    arr : array-like
+        Rotated vector.
+    """
     c, s = np.cos(phi), np.sin(phi)
     rotm = np.array([[c, -s], [s, c]])
     return np.dot(rotm, arr.T).T
 
-def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
-    """Get bins for 1d seismic."""
+def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None,
+                      opt='gradient', **kwargs):
+    """Get bins for 1d seismic geometry.
+
+    Parameters
+    ----------
+    dfr : pandas.DataFrame
+        SPS R file data.
+    dfs : pandas.DataFrame
+        SPS S file data.
+    dfx : pandas.DataFrame
+        SPS X file data.
+    bin_size : scalar
+        Grid bin size.
+    origin : dict
+        Grid origin for each line.
+    phi : dict
+        Grid orientation for each line.
+    opt : str
+        Grid location optimizer.
+    kwargs : dict
+        Named argumets for optimizer.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with bins indexing.
+    """
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       list(zip(*[dfx['from_receiver'], dfx['to_receiver']]))])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
@@ -134,16 +238,22 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         else:
             _phi = np.radians(phi[rline]) # pylint: disable=assignment-from-no-return
 
-        pts = rot_2d(pts, -_phi)
+        pts = rotate_2d(pts, -_phi)
         ppx, y = pts[:, 0], np.mean(pts[:, 1])
 
         if origin is None:
-            shift = gradient_bins_shift(ppx, bin_size, iters)
+            if opt == 'gradient':
+                shift = gradient_bins_shift(ppx, bin_size, **kwargs)
+            elif opt == 'monte-carlo':
+                shift = random_bins_shift(ppx, bin_size, **kwargs)
+            else:
+                raise ValueError('Unknown grid optimizer.')
+
             s = shift + bin_size * ((np.min(ppx) - shift) // bin_size)
-            _origin = rot_2d(np.array([[s, y]]), _phi)[0]
+            _origin = rotate_2d(np.array([[s, y]]), _phi)[0]
         else:
             _origin = origin[rline]
-            s = rot_2d(_origin.reshape((-1, 2)), -_phi)[0, 0]
+            s = rotate_2d(_origin.reshape((-1, 2)), -_phi)[0, 0]
 
         t = np.max(ppx)
         bins = np.arange(s, t + bin_size, bin_size)
@@ -167,10 +277,37 @@ def make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
 
     return dfm, meta
 
-def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
-    """Get bins for 2d seismic."""
+def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None,
+                      opt='gradient', **kwargs):
+    """Get bins for 2d seismic geometry.
+
+    Parameters
+    ----------
+    dfr : pandas.DataFrame
+        SPS R file data.
+    dfs : pandas.DataFrame
+        SPS S file data.
+    dfx : pandas.DataFrame
+        SPS X file data.
+    bin_size : tuple
+        Grid bin size.
+    origin : dict
+        Grid origin for each line.
+    phi : dict
+        Grid orientation for each line.
+    opt : str
+        Grid location optimizer.
+    kwargs : dict
+        Named argumets for optimizer.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with bins indexing.
+    """
     if bin_size[0] != bin_size[1]:
         raise ValueError('Bins are not square')
+
     bin_size = bin_size[0]
 
     rids = np.hstack([np.arange(s, e + 1) for s, e in
@@ -197,17 +334,24 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
         phi = get_phi(dfr, dfs)
     else:
         phi = np.radians(phi) # pylint: disable=assignment-from-no-return
+
     if phi > 0:
         phi += -np.pi / 2
 
-    pts = rot_2d(dfm[['CDP_X', 'CDP_Y']].values, -phi)
+    pts = rotate_2d(dfm[['CDP_X', 'CDP_Y']].values, -phi) # pylint: disable=invalid-unary-operand-type
 
     if origin is None:
-        shift = gradient_bins_shift(pts, bin_size, iters)
+        if opt == 'gradient':
+            shift = gradient_bins_shift(pts, bin_size, **kwargs)
+        elif opt == 'monte-carlo':
+            shift = random_bins_shift(pts, bin_size, **kwargs)
+        else:
+            raise ValueError('Unknown grid optimizer.')
+
         s = shift + bin_size * ((np.min(pts, axis=0) - shift) // bin_size)
-        origin = rot_2d(s.reshape((1, 2)), phi)[0]
+        origin = rotate_2d(s.reshape((1, 2)), phi)[0]
     else:
-        s = rot_2d(origin.reshape((1, 2)), -phi)[0]
+        s = rotate_2d(origin.reshape((1, 2)), -phi)[0] # pylint: disable=invalid-unary-operand-type
 
     t = np.max(pts, axis=0)
     xbins, ybins = np.array([np.arange(a, b + bin_size, bin_size) for a, b in zip(s, t)])
@@ -223,22 +367,61 @@ def make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters):
     dfm = dfm.drop(labels=['from_channel', 'to_channel',
                            'from_receiver', 'to_receiver'], axis=1)
     dfm.rename(columns={'x_s': 'SourceX', 'y_s': 'SourceY'}, inplace=True)
-
     meta = dict(origin=origin, phi=np.rad2deg(phi), bin_size=(bin_size, bin_size))
-
     return dfm, meta
 
-def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, iters=10):
-    """Get bins for seismic."""
+def make_bin_index(dfr, dfs, dfx, bin_size, origin=None, phi=None, **kwargs):
+    """Get bins for seismic geometry.
+
+    Parameters
+    ----------
+    dfr : pandas.DataFrame
+        SPS R file data.
+    dfs : pandas.DataFrame
+        SPS S file data.
+    dfx : pandas.DataFrame
+        SPS X file data.
+    bin_size : scalar or tuple of scalars
+        Grid bin size.
+    origin : dict
+        Grid origin for each line.
+    phi : dict
+        Grid orientation for each line.
+    opt : str
+        Grid location optimizer.
+    kwargs : dict
+        Named argumets for optimizer.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with bins indexing.
+    """
     if isinstance(bin_size, (list, tuple, np.ndarray)):
-        df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
+        df, meta = make_2d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, **kwargs)
     else:
-        df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, iters)
+        df, meta = make_1d_bin_index(dfr, dfs, dfx, bin_size, origin, phi, **kwargs)
+
     df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
     return df, meta
 
 def build_sps_df(dfr, dfs, dfx):
-    """Index traces according to SPS data."""
+    """Index traces according to SPS data.
+
+    Parameters
+    ----------
+    dfr : pandas.DataFrame
+        SPS R file data.
+    dfs : pandas.DataFrame
+        SPS S file data.
+    dfx : pandas.DataFrame
+        SPS X file data.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with trace indexing.
+    """
     rids = np.hstack([np.arange(s, e + 1) for s, e in
                       zip(*[dfx['from_receiver'], dfx['to_receiver']])])
     channels = np.hstack([np.arange(s, e + 1) for s, e in
@@ -267,8 +450,27 @@ def build_sps_df(dfr, dfs, dfx):
 
     return dfm
 
-def make_segy_index(filename, extra_headers=None):
-    """Index traces according to SEGY data."""
+def make_segy_index(filename, extra_headers=None, limits=None):
+    """Index traces in a single SEGY file.
+
+    Parameters
+    ----------
+    filename : str
+        Path to SEGY file.
+    extra_headers : array-like or str
+        Additional headers to put unto DataFrme. If 'all', all headers are included.
+    limits : slice or int, default to None
+        If int, index only first ```limits``` traces. If slice, index only traces
+        within given range. If None, index all traces.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with trace indexing.
+    """
+    if not isinstance(limits, slice):
+        limits = slice(limits)
+
     with segyio.open(filename, strict=False) as segyfile:
         segyfile.mmap()
         if extra_headers == 'all':
@@ -277,18 +479,39 @@ def make_segy_index(filename, extra_headers=None):
             headers = DEFAULT_SEGY_HEADERS
         else:
             headers = set(DEFAULT_SEGY_HEADERS + list(extra_headers))
+
         meta = dict()
+
         for k in headers:
-            meta[k] = segyfile.attributes(getattr(segyio.TraceField, k))[:]
-        meta['TRACE_SEQUENCE_FILE'] = np.arange(1, segyfile.tracecount + 1)
-        meta['file_id'] = np.repeat(filename, segyfile.tracecount)
+            meta[k] = segyfile.attributes(getattr(segyio.TraceField, k))[limits]
+
+        meta['file_id'] = np.repeat(filename, segyfile.tracecount)[limits]
+
     df = pd.DataFrame(meta)
     return df
 
-def build_segy_df(extra_headers=None, name=None, **kwargs):
-    """Build dataframe."""
+def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
+    """Index traces in multiple SEGY files.
+
+    Parameters
+    ----------
+    extra_headers : array-like or str
+        Additional headers to put unto DataFrme. If 'all', all headers are included.
+    name : str
+        Name that will be associated with indexed traces.
+    limits : slice or int, default to None
+        If int, index only first ```limits``` traces. If slice, index only traces
+        within given range. If None, index all traces.
+    kwargs : dict
+        Named argumets for ```batchflow.FilesIndex```.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with trace indexing.
+    """
     index = FilesIndex(**kwargs)
-    df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers) for
+    df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, limits) for
                     i in sorted(index.indices)])
     common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
     df = df[common_cols + FILE_DEPENDEND_COLUMNS]
@@ -296,8 +519,26 @@ def build_segy_df(extra_headers=None, name=None, **kwargs):
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
 
-def show_1d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
-    """Plot point distribution within 1D bins."""
+def show_1d_heatmap(idf, figsize=None, save_to=None, dpi=300, **kwargs):
+    """Plot point distribution within 1D bins.
+
+    Parameters
+    ----------
+    idf : pandas.DataFrame
+        Index DataFrame.
+    figsize : tuple
+        Output figure size.
+    save_to : str, optional
+        If given, save plot to the path specified.
+    dpi : int
+        Resolution for saved figure.
+    kwargs : dict
+        Named argumets for ```matplotlib.pyplot.imshow```.
+
+    Returns
+    -------
+    Heatmap plot.
+    """
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([i.split('/') for i in bin_counts.index])
 
@@ -314,7 +555,7 @@ def show_1d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     if figsize is not None:
         plt.figure(figsize=figsize)
 
-    heatmap = plt.imshow(hist, *args, **kwargs)
+    heatmap = plt.imshow(hist, **kwargs)
     plt.colorbar(heatmap)
     plt.yticks(np.arange(brange[0]), bindf['line'].drop_duplicates().values, fontsize=8)
     plt.xlabel("Bins index")
@@ -322,10 +563,29 @@ def show_1d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     plt.axes().set_aspect('auto')
     if save_to is not None:
         plt.savefig(save_to, dpi=dpi)
+
     plt.show()
 
-def show_2d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
-    """Plot point distribution within 2D bins."""
+def show_2d_heatmap(idf, figsize=None, save_to=None, dpi=300, **kwargs):
+    """Plot point distribution within 2D bins.
+
+    Parameters
+    ----------
+    idf : pandas.DataFrame
+        Index DataFrame.
+    figsize : tuple
+        Output figure size.
+    save_to : str, optional
+        If given, save plot to the path specified.
+    dpi : int
+        Resolution for saved figure.
+    kwargs : dict
+        Named argumets for ```matplotlib.pyplot.imshow```.
+
+    Returns
+    -------
+    Heatmap plot.
+    """
     bin_counts = idf.groupby(level=[0]).size()
     bins = np.array([np.array(i.split('/')).astype(int) for i in bin_counts.index])
     brange = np.max(bins, axis=0)
@@ -336,7 +596,7 @@ def show_2d_heatmap(idf, *args, figsize=None, save_to=None, dpi=300, **kwargs):
     if figsize is not None:
         plt.figure(figsize=figsize)
 
-    heatmap = plt.imshow(hist.T, origin='lower', *args, **kwargs)
+    heatmap = plt.imshow(hist.T, origin='lower', **kwargs)
     plt.colorbar(heatmap)
     plt.xlabel('x-Bins')
     plt.ylabel('y-Bins')

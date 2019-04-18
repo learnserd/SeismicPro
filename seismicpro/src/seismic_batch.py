@@ -12,7 +12,8 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
-from .utils import IndexTracker, partialmethod, write_segy_file, spectrum_plot, seismic_plot
+from .utils import (IndexTracker, partialmethod, write_segy_file,
+                    spectrum_plot, seismic_plot, show_statistics)
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
 
@@ -745,7 +746,9 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, **kwargs):
+    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+                     pts=None, s=None, c=None, figsize=None,
+                     save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
 
         Parameters
@@ -754,7 +757,27 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        kwargs: dict
+        wiggle : bool, default to False
+            Show traces in a wiggle form.
+        xlim : tuple, optional
+            Range in x-axis to show.
+        ylim : tuple, optional
+            Range in y-axis to show.
+        std : scalar, optional
+            Amplitude scale for traces in wiggle form.
+        pts : array_like, shape (n, )
+            The points data positions.
+        s : scalar or array_like, shape (n, ), optional
+            The marker size in points**2.
+        c : color, sequence, or sequence of color, optional
+            The marker color.
+        figsize : array-like, optional
+            Output plot size.
+        save_to : str or None, optional
+            If not None, save plot to given path.
+        dpi : int, optional, default: None
+            The resolution argument for matplotlib.pyplot.savefig.
+        kwargs : dict
             Additional keyword arguments for plot.
 
         Returns
@@ -767,9 +790,12 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        seismic_plot(arrs=arrs, names=names, **kwargs)
+        seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
+                     pts=pts, s=s, c=c, figsize=figsize, names=names,
+                     save_to=save_to, dpi=dpi, **kwargs)
 
-    def spectrum_plot(self, src, index, **kwargs):
+    def spectrum_plot(self, src, index, frame, rate, max_freq=None,
+                      figsize=None, save_to=None, **kwargs):
         """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
         Parameters
@@ -778,8 +804,18 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
+        frame : tuple
+            List of slices that frame region of interest.
+        rate : scalar
+            Sampling rate.
+        max_freq : scalar
+            Upper frequence limit.
+        figsize : array-like, optional
+            Output plot size.
+        save_to : str or None, optional
+            If not None, save plot to given path.
         kwargs : dict
-            Additional keyword arguments for plot.
+            Named argumets to matplotlib.pyplot.imshow.
 
         Returns
         -------
@@ -791,4 +827,37 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        spectrum_plot(arrs=arrs, names=names, **kwargs)
+        spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
+                      names=names, figsize=figsize, save_to=save_to, **kwargs)
+
+    def show_statistics(self, src, index, domain, rate=None, tslice=None,
+                        figsize=None, **kwargs):
+        """Show statistics in 2D plots.
+
+        Parameters
+        ----------
+        src : str
+            The batch component with data to use for statistics calculation.
+        index : same type as batch.indices
+            Data index to select data from.
+        domain : str, 'time' or 'frequency'
+            Domain to calculate statistics in.
+        rate : scalar
+            Sampling rate.
+        tslice : slice, default to None
+            Slice of time samples to select from data.
+        figsize : array-like, optional
+            Output plot size.
+        kwargs : dict
+            Named argumets to matplotlib.pyplot.imshow.
+
+        Returns
+        -------
+        Plots of statistics distribution.
+        """
+        pos = self.get_pos(None, src, index)
+        data = getattr(self, src)[pos]
+        iline = self.index.get_df(index)['INLINE_3D']
+        xline = self.index.get_df(index)['CROSSLINE_3D']
+        show_statistics(data, domain=domain, iline=iline, xline=xline,
+                        rate=rate, tslice=tslice, figsize=figsize, **kwargs)

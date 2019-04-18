@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches
+from sklearn import preprocessing
 import segyio
 
 from . import seismic_index as si
@@ -72,13 +73,29 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwargs):
-    """Show 2D data with matplotlib.pyplot.imshow and 1D data with matplotlib.pyplot.plot.
+def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+                 pts=None, s=None, c=None, names=None, figsize=None,
+                 save_to=None, dpi=None, **kwargs):
+    """Plot seismic traces.
 
     Parameters
     ----------
     arrs : array-like
-        Arrays to plot.
+        Arrays of seismic traces to plot.
+    wiggle : bool, default to False
+        Show traces in a wiggle form.
+    xlim : tuple, optional
+        Range in x-axis to show.
+    ylim : tuple, optional
+        Range in y-axis to show.
+    std : scalar, optional
+        Amplitude scale for traces in wiggle form.
+    pts : array_like, shape (n, )
+        The points data positions.
+    s : scalar or array_like, shape (n, ), optional
+        The marker size in points**2.
+    c : color, sequence, or sequence of color, optional
+        The marker color.
     names : str or array-like, optional
         Title names to identify subplots.
     figsize : array-like, optional
@@ -102,16 +119,45 @@ def seismic_plot(arrs, names=None, figsize=None, save_to=None, dpi=None, **kwarg
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
     for i, arr in enumerate(arrs):
-        arr = np.squeeze(arr)
+        if not wiggle:
+            arr = np.squeeze(arr)
+
+        if xlim is None:
+            xlim = (0, len(arr))
+
         if arr.ndim == 2:
-            ax[0, i].imshow(arr.T, **kwargs)
+            if ylim is None:
+                ylim = (0, len(arr[0]))
+
+            if wiggle:
+                offsets = np.arange(*xlim)
+                y = np.arange(*ylim)
+                for k in offsets:
+                    x = k + std * arr[k, slice(*ylim)] / np.std(arr)
+                    ax[0, i].plot(x, y, 'k-')
+                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color='k')
+
+            else:
+                ax[0, i].imshow(arr.T, **kwargs)
+
         elif arr.ndim == 1:
             ax[0, i].plot(arr, **kwargs)
         else:
             raise ValueError('Invalid ndim to plot data.')
 
+        if pts is not None:
+            ax[0, i].scatter(*pts, s=s, c=c)
+
         if names is not None:
             ax[0, i].set_title(names[i])
+
+        if arr.ndim == 2:
+            plt.ylim([ylim[1], ylim[0]])
+            if (not wiggle) or (pts is not None):
+                plt.xlim(xlim)
+
+        if arr.ndim == 1:
+            plt.xlim(xlim)
 
         ax[0, i].set_aspect('auto')
 
@@ -141,7 +187,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
     save_to : str or None, optional
         If not None, save plot to given path.
     kwargs : dict
-        Named argumets to matplotlib.pyplot.imshow
+        Named argumets to matplotlib.pyplot.imshow.
 
     Returns
     -------
@@ -181,6 +227,115 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
+def spectral_statistics(data, rate):
+    """Calculate basic statistics (rms, sts, total variance, mode) of trace
+    power spectrum.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    rate : scalar
+        Sampling rate.
+
+    Returns
+    -------
+    stats : array
+        Arrays of rms, sts, total variance, mode for each trace.
+    """
+    spec = abs(np.fft.rfft(data, axis=1))**2
+    var = np.sum(abs(np.diff(spec, axis=1)), axis=1)
+    spec = spec / spec.sum(axis=1).reshape((-1, 1))
+    freqs = np.fft.rfftfreq(len(data[0]), d=rate)
+    peak = freqs[np.argmax(spec, axis=1)]
+    mean = (freqs * spec).sum(axis=1)
+    mean2 = (freqs**2 * spec).sum(axis=1)
+    std = np.sqrt(mean2 - mean**2)
+    return (np.sqrt(mean2), std, var, peak)
+
+def time_statistics(data):
+    """Calculate basic statistics (rms, sts, total variance, mode) for traces.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    rate : scalar
+        Sampling rate.
+
+    Returns
+    -------
+    stats : array
+        Arrays of rms, sts, total variance, mode for each trace.
+    """
+    peak = np.max(abs(data), axis=1)
+    mean = np.mean(abs(data), axis=1)
+    std = np.std(data, axis=1)
+    mean2 = std**2 + mean**2
+    var = np.sum(abs(np.diff(data, axis=1)), axis=1)
+    return (np.sqrt(mean2), std, var, peak)
+
+def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
+                    figsize=None, **kwargs):
+    """Show statistics in 2D plots.
+
+    Parameters
+    ----------
+    data : array-like
+        Array of traces.
+    domain : str, 'time' or 'frequency'
+        Domain to calculate statistics in.
+    rate : scalar
+        Sampling rate.
+    tslice : slice, default to None
+        Slice of time samples to select from data.
+    iline : array-like
+        Array of inline numbers.
+    xline : array-like
+        Array of crossline numbers.
+    figsize : array-like, optional
+        Output plot size.
+    kwargs : dict
+        Named argumets to matplotlib.pyplot.imshow.
+
+    Returns
+    -------
+    Plots of statistics distribution.
+    """
+    if tslice is not None:
+        data = data[:, tslice]
+
+    if domain == 'time':
+        vals = time_statistics(data)
+    elif domain == 'frequency':
+        vals = spectral_statistics(data, rate)
+    else:
+        raise ValueError('Unknown domain.')
+
+    titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
+    enc = preprocessing.LabelEncoder()
+    x = enc.fit_transform(iline)
+    xc = enc.classes_
+    y = enc.fit_transform(xline)
+    yc = enc.classes_
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    im = np.zeros((len(xc), len(yc)))
+    for i, ax in enumerate(axes.reshape(-1)):
+        im[x, y] = vals[i]
+        plot = ax.imshow(im.T, **kwargs)
+        step = len(xc) // 9
+        ax.set_xticks(np.arange(0, len(xc), step))
+        ax.set_xticklabels(xc[::step])
+        step = len(yc) // 9
+        ax.set_yticks(np.arange(0, len(yc), step))
+        ax.set_yticklabels(yc[::step])
+        ax.set_aspect('auto')
+        ax.set_xlabel('INLINE'), ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
+        ax.set_title(titles[i])
+        fig.colorbar(plot, ax=ax)
+
+    plt.show()
+
 def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
     """Write data and headers into SEGY file.
 
@@ -209,6 +364,7 @@ def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
     spec.tracecount = len(data)
 
     df.columns = [getattr(segyio.TraceField, k) for k in df.columns]
+    df[getattr(segyio.TraceField, 'TRACE_SEQUENCE_FILE')] = np.arange(len(df)) + 1
 
     with segyio.create(path, spec) as file:
         file.trace = data
@@ -233,7 +389,7 @@ def merge_segy_files(output_path, **kwargs):
     spec = segyio.spec()
     spec.sorting = None
     spec.format = 1
-    spec.tracecount = segy_index.tracecount
+    spec.tracecount = sum(segy_index.tracecounts)
     with segyio.open(segy_index.indices[0], strict=False) as file:
         spec.samples = file.samples
 
@@ -245,6 +401,9 @@ def merge_segy_files(output_path, **kwargs):
                 dst.header[i: i + src.tracecount] = src.header
 
             i += src.tracecount
+
+        for j, h in enumerate(dst.header):
+            h.update({segyio.TraceField.TRACE_SEQUENCE_FILE: j + 1})
 
 def merge_picking_files(output_path, **kwargs):
     """Merge picking files into a single file.
