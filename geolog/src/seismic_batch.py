@@ -148,8 +148,8 @@ class SeismicBatch(Batch):
     1. Using parameter ``components`` in ``load``.
     2. Using parameter ``dst`` with init function named ``_init_component``.
     """
-    def __init__(self, index, preloaded=None):
-        super().__init__(index, preloaded=preloaded)
+    def __init__(self, index, preloaded=None, *args, **kwargs):
+        super().__init__(index, preloaded=preloaded, *args, **kwargs)
         if preloaded is None:
             self.meta = dict()
 
@@ -223,7 +223,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def apply_along_axis(self, index, func, *args, src, dst, slice_axis=0, **kwargs):
+    def apply_along_axis(self, index, func, *args, src, dst=None, slice_axis=0, **kwargs):
         """Apply function along specified axis of batch items.
 
         Parameters
@@ -255,7 +255,7 @@ class SeismicBatch(Batch):
 
     @action
     @apply_to_each_component
-    def apply_transform(self, func, *args, src, dst, **kwargs):
+    def apply_transform(self, func, *args, src, dst=None, **kwargs):
         """Apply a function to each item in the batch.
 
         Parameters
@@ -285,7 +285,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def band_pass_filter(self, index, *args, src, dst, lowcut=None, highcut=None, fs=1, order=5):
+    def band_pass_filter(self, index, *args, src, dst=None, lowcut=None, highcut=None, fs=1, order=5):
         """Apply a band pass filter.
 
         Parameters
@@ -324,7 +324,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def to_2d(self, index, *args, src, dst, length_alignment=None, pad_value=0):
+    def to_2d(self, index, *args, src, dst=None, length_alignment=None, pad_value=0):
         """Convert array of 1d arrays to 2d array.
 
         Parameters
@@ -601,7 +601,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def slice_traces(self, index, *args, src, dst, slice_obj):
+    def slice_traces(self, index, *args, src, slice_obj, dst=None):
         """
         Slice traces.
 
@@ -628,7 +628,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def pad_traces(self, index, *args, src, dst, **kwargs):
+    def pad_traces(self, index, *args, src, dst=None, **kwargs):
         """
         Pad traces with ```numpy.pad```.
 
@@ -660,7 +660,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
-    def sort_traces(self, index, *args, src, dst, sort_by):
+    def sort_traces(self, index, *args, src, sort_by, dst=None):
         """Sort traces.
 
         Parameters
