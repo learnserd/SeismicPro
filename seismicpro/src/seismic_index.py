@@ -40,7 +40,7 @@ class TraceIndex(DatasetIndex):
     @property
     def tracecounts(self):
         """Return a number of indexed traces for each index."""
-        return np.array([len(self._idf.loc[i]) for i in self.indices])
+        return self._idf.groupby(self._idf.index, sort=False).size().values
 
     @property
     def name(self):
