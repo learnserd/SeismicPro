@@ -511,34 +511,17 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
         DataFrame with trace indexing.
     """
     markup_path = kwargs.pop('markup_path', None)
-    mapper = kwargs.pop('mapper', None)
     index = FilesIndex(**kwargs)
     df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, limits) for
                     i in sorted(index.indices)])
     if markup_path:
-        df = merge_picking(df, markup_path, mapper)
+        markup = pd.read_csv(markup_path)
+        df = df.merge(markup, how='inner')
     common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
     df = df[common_cols + FILE_DEPENDEND_COLUMNS]
     df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
-
-def merge_picking(df, path, mapper=None):
-    """Merge segy traces with markup.
-
-    Parameters
-    ----------
-    df: DataFrame
-        DataFrame of segy file.
-    path: str
-        Path to markup file.
-    mapper: dict
-        Mapping of segy columns into picking columns.
-    """
-    markup = pd.read_csv(path)
-    if mapper:
-        markup.rename(mapper=mapper, axis=1, inplace=True)
-    return df.merge(markup, how='left')
 
 def show_1d_heatmap(idf, figsize=None, save_to=None, dpi=300, **kwargs):
     """Plot point distribution within 1D bins.

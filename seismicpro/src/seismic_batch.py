@@ -476,8 +476,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = [trace for ffid in getattr(self, src) for trace in ffid]
-
+        data = np.concatenate(getattr(self, src))
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -485,12 +484,12 @@ class SeismicBatch(Batch):
             columns = PICKS_FILE_HEADERS
 
         df = self.index.get_df(reset=False)
-
-        df = df.loc[self.indices]
-        df['timeOffset'] = data
         sort_by = self.meta[traces]['sorting']
         if sort_by is not None:
             df = df.sort_values(by=sort_by)
+
+        df = df.loc[self.indices]
+        df['timeOffset'] = data
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
         df.to_csv(path, index=False)
@@ -525,8 +524,10 @@ class SeismicBatch(Batch):
 
     def _load_picking(self, components):
         """Load picking from file."""
-        idf = self.index._idf # pylint: disable=protected-access
-        res = [idf.loc[i, 'y'].values for i in self.indices]
+        idf = self.index.get_df(reset=False) # pylint: disable=protected-access
+        #print(self.index.tracecounts)
+        res = np.split(idf.y, np.cumsum(self.index.tracecounts))
+        #res = [idf.loc[i, 'y'].values for i in self.indices]
         setattr(self, components, res)
         return self
 
@@ -739,7 +740,7 @@ class SeismicBatch(Batch):
         return fig, tracker
 
     def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                     pts=None, s=None, c=None, figsize=None,
+                     src_picking=None, s=None, c=None, figsize=None,
                      save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
 
@@ -780,10 +781,13 @@ class SeismicBatch(Batch):
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
+        if src_picking:
+            picking = getattr(self, src_picking)[pos] / 2
+            pts_picking = (range(len(picking)), picking)
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts, s=s, c=c, figsize=figsize, names=names,
+                     pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
                      save_to=save_to, dpi=dpi, **kwargs)
 
     def spectrum_plot(self, src, index, frame, rate, max_freq=None,
