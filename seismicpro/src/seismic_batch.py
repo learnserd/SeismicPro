@@ -524,8 +524,8 @@ class SeismicBatch(Batch):
 
     def _load_picking(self, components):
         """Load picking from file."""
-        idf = self.index.get_df(reset=False) # pylint: disable=protected-access
-        res = np.split(idf.y, np.cumsum(self.index.tracecounts))
+        idf = self.index.get_df(reset=False)
+        res = np.split(idf.y, np.cumsum(self.index.tracecounts))[:-1]
         setattr(self, components, res)
         return self
 
@@ -737,7 +737,7 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+    def seismic_plot(self, src, index, sample_tick=2, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
                      src_picking=None, s=None, c=None, figsize=None,
                      save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
@@ -748,9 +748,11 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
+        sample_tick : int
+            Number of miliseconds between samples.
         wiggle : bool, default to False
             Show traces in a wiggle form.
-        xlim : tuple, optional
+        xlim : tuple, optionalgit
             Range in x-axis to show.
         ylim : tuple, optional
             Range in y-axis to show.
@@ -779,8 +781,9 @@ class SeismicBatch(Batch):
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
-        if src_picking:
-            picking = getattr(self, src_picking)[pos] / 2
+        if src_picking is not None:
+            picking = getattr(self, src_picking)[pos]
+            picking /= sample_tick
             pts_picking = (range(len(picking)), picking)
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]

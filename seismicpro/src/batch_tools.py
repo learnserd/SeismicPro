@@ -514,7 +514,7 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
     index = FilesIndex(**kwargs)
     df = pd.concat([make_segy_index(index.get_fullpath(i), extra_headers, limits) for
                     i in sorted(index.indices)])
-    if markup_path:
+    if markup_path is not None:
         markup = pd.read_csv(markup_path)
         df = df.merge(markup, how='inner')
     common_cols = list(set(df.columns) - set(FILE_DEPENDEND_COLUMNS))
