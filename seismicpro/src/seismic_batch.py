@@ -525,9 +525,7 @@ class SeismicBatch(Batch):
     def _load_picking(self, components):
         """Load picking from file."""
         idf = self.index.get_df(reset=False) # pylint: disable=protected-access
-        #print(self.index.tracecounts)
         res = np.split(idf.y, np.cumsum(self.index.tracecounts))
-        #res = [idf.loc[i, 'y'].values for i in self.indices]
         setattr(self, components, res)
         return self
 
@@ -758,8 +756,8 @@ class SeismicBatch(Batch):
             Range in y-axis to show.
         std : scalar, optional
             Amplitude scale for traces in wiggle form.
-        pts : array_like, shape (n, )
-            The points data positions.
+        src_picking : str
+            Component with picking data.
         s : scalar or array_like, shape (n, ), optional
             The marker size in points**2.
         c : color, sequence, or sequence of color, optional
@@ -789,6 +787,7 @@ class SeismicBatch(Batch):
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
                      pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
                      save_to=save_to, dpi=dpi, **kwargs)
+        return self
 
     def spectrum_plot(self, src, index, frame, rate, max_freq=None,
                       figsize=None, save_to=None, **kwargs):
@@ -825,6 +824,7 @@ class SeismicBatch(Batch):
         names = [' '.join([i, str(index)]) for i in src]
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
+        return self
 
     def show_statistics(self, src, index, domain, rate=None, tslice=None,
                         figsize=None, **kwargs):
@@ -857,3 +857,4 @@ class SeismicBatch(Batch):
         xline = self.index.get_df(index)['CROSSLINE_3D']
         show_statistics(data, domain=domain, iline=iline, xline=xline,
                         rate=rate, tslice=tslice, figsize=figsize, **kwargs)
+        return self
