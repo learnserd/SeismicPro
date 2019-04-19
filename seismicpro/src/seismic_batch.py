@@ -526,7 +526,7 @@ class SeismicBatch(Batch):
         """Load picking from file."""
         idf = self.index.get_df(reset=False)
         res = np.split(idf.y, np.cumsum(self.index.tracecounts))[:-1]
-        setattr(self, components, res)
+        self.add_components(components, init=res)
         return self
 
     @apply_to_each_component
@@ -737,7 +737,7 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, sample_tick=2, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+    def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
                      src_picking=None, s=None, c=None, figsize=None,
                      save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
@@ -783,7 +783,9 @@ class SeismicBatch(Batch):
 
         if src_picking is not None:
             picking = getattr(self, src_picking)[pos]
-            picking /= sample_tick
+            if to_samples:
+                tick = np.diff(self.meta[src[0]]['samples'])[0]
+                picking /= tick
             pts_picking = (range(len(picking)), picking)
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
