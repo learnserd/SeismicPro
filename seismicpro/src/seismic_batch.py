@@ -2,7 +2,6 @@
 import os
 from textwrap import dedent
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
@@ -16,7 +15,7 @@ from .utils import (IndexTracker, partialmethod, write_segy_file,
                     spectrum_plot, seismic_plot, time_statistics,
                     spectral_statistics, show_statistics)
 
-PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
+PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
 
 ACTIONS_DICT = {
@@ -478,7 +477,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.vstack(getattr(self, src)).ravel()
+        data = np.concatenate(getattr(self, src))
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -520,23 +519,15 @@ class SeismicBatch(Batch):
         if fmt.lower() in ['sgy', 'segy']:
             return self._load_segy(src=components, dst=components, **kwargs)
         if fmt == 'picks':
-            return self._load_picking(src=src, components=components)
+            return self._load_picking(components=components)
 
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
-    def _load_picking(self, src, components):
+    def _load_picking(self, components):
         """Load picking from file."""
-        df = pd.read_csv(src)
-        df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
-        idf = self.index.get_df()
-
-        df = idf.merge(df, how='left')
-        if self.index.name is not None:
-            df = df.set_index(self.index.name)
-
-        res = [df.loc[i, 'timeOffset'].values for i in self.indices]
-        setattr(self, components, res)
-        self.add_components(components)
+        idf = self.index.get_df(reset=False)
+        res = np.split(idf.y, np.cumsum(self.index.tracecounts))[:-1]
+        self.add_components(components, init=res)
         return self
 
     @apply_to_each_component
@@ -746,8 +737,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                     pts=None, s=None, c=None, figsize=None,
+    def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+                     src_picking=None, s=None, c=None, figsize=None,
                      save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
 
@@ -757,16 +748,18 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
+        sample_tick : int
+            Number of miliseconds between samples.
         wiggle : bool, default to False
             Show traces in a wiggle form.
-        xlim : tuple, optional
+        xlim : tuple, optionalgit
             Range in x-axis to show.
         ylim : tuple, optional
             Range in y-axis to show.
         std : scalar, optional
             Amplitude scale for traces in wiggle form.
-        pts : array_like, shape (n, )
-            The points data positions.
+        src_picking : str
+            Component with picking data.
         s : scalar or array_like, shape (n, ), optional
             The marker size in points**2.
         c : color, sequence, or sequence of color, optional
@@ -788,10 +781,16 @@ class SeismicBatch(Batch):
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
+        if src_picking is not None:
+            picking = getattr(self, src_picking)[pos]
+            if to_samples:
+                tick = np.diff(self.meta[src[0]]['samples'])[0]
+                picking /= tick
+            pts_picking = (range(len(picking)), picking)
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts, s=s, c=c, figsize=figsize, names=names,
+                     pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
                      save_to=save_to, dpi=dpi, **kwargs)
         return self
 
