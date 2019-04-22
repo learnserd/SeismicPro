@@ -318,7 +318,7 @@ def show_statistics(data, iline, xline, nrows=1, ncols=1,
     xc = enc.classes_
     y = enc.fit_transform(xline)
     yc = enc.classes_
-    fig, axes = plt.subplots(2, 2, figsize=figsize, squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
     im = np.zeros((len(xc), len(yc)))
     for i, ax in enumerate(axes.reshape(-1)):
         im[x, y] = data[i]
