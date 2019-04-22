@@ -7,6 +7,7 @@ Content
 
 * [About](#About)
 * [Installation](#Installation)
+* [Tutorials](#Tutorials)
 * [File formats](#File-formats)
 	* [Seismic data](#Seismic-data)
 	* [SPS data](#SPS-data)
@@ -15,12 +16,11 @@ Content
     * [Noise attenuation](#Noise-attenuation)
     * [First-break picking](#First--break-picking)
 * [Models](#Models)
-    * [Noise attenuation](#Noise-attenuation)
-    * [First-break picking](#First--break-picking)
+    * [Ground-roll attenuation](#Ground-roll-attenuation)
 * [Literature](#Literature)
 
 ## About
-SeismicPro provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
+SeismicPro provides a framework for machine learning on field seismic data.
 
 
 ## Installation
@@ -28,8 +28,18 @@ SeismicPro provides a framework for machine learning on field seismic data. Read
 ```
 git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 ```
+## Tutorials
+
+A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
+
+1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
+2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
+3. [Noise attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.%20Noise%20attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
+4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.%20First-break%20picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
+
 
 ## File formats
+
 ### Seismic data
 
 Seismic data are expected to be in SEG-Y format.
@@ -43,9 +53,7 @@ SPS data are expected as R, S, X text files in csv (comma-separated-values) form
 
 ### Picking data
 
-File with first-break picking data is expected to be in csv (comma-separated-values) format with required and optional headers.
-
-Required headers: **FieldRecord**, **TraceNumber**, **ShotPoint**, **timeOffset**.
+File with first-break picking data is expected to be in csv (comma-separated-values) format with columns **FieldRecord**, **TraceNumber**, **FIRST_BREAK_TIME**.
 
 ## Datasets
 
@@ -55,15 +63,13 @@ See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/data
 
 ### First-break picking
 
+See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/first_break_picking.ipynb) for description of datasets.
+
 ## Models
 
-### Noise attenuation
+### Ground-roll attenuation
 
-See the [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.%20Noise%20attenuation.ipynb) for model training and inference.
-
-### First-break picking
-
-See the [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.%20First-break%20picking.ipynb) for model training and inference.
+See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb) for description of the ground-roll attenuation model.
 
 
 ## Literature
