@@ -3,7 +3,7 @@ import functools
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib import patches
+from matplotlib import patches, colors as mcolors
 from sklearn import preprocessing
 import segyio
 
@@ -426,3 +426,124 @@ def merge_picking_files(output_path, **kwargs):
 
     df = pd.concat(dfs, ignore_index=True)
     df.to_csv(output_path, index=False)
+
+def show_research(df, layout=None, average_repetitions=False, log_scale=False, rolling_window=None, color=None): # pylint: disable=too-many-branches
+    """Show plots given by research dataframe.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Research's results
+    layout : list, optional
+        list of strings where each element consists two parts that splited by /. First part is the type
+        of calculated value wrote in the "name" column. Second is name of column  with the parameters
+        that will be drawn.
+    average_repetitions : bool, optional
+        If True, then a separate line will be drawn for each repetition
+        else one mean line will be drawn for each repetition.
+    log_scale : bool, optional
+        If True, values will be logarithmised.
+    rolling_window : None or int, optional
+        Size of rolling window.
+    """
+    if layout is None:
+        layout = []
+        for nlabel, ndf in df.groupby("name"):
+            ndf = ndf.drop(['config', 'name', 'iteration', 'repetition'], axis=1).dropna(axis=1)
+            for attr in ndf.columns.values:
+                layout.append('/'.join([str(nlabel), str(attr)]))
+    if isinstance(log_scale, bool):
+        log_scale = [log_scale] * len(layout)
+    if isinstance(rolling_window, int) or (rolling_window is None):
+        rolling_window = [rolling_window] * len(layout)
+    rolling_window = [x if x is not None else 1 for x in rolling_window]
+
+    if color is None:
+        colors = list(mcolors.CSS4_COLORS.keys())
+    df_len = len(df['config'].unique())
+    replace = False if len(colors) > df_len else True
+    chosen_colors = np.random.choice(colors, replace=replace, size=df_len)
+
+    _, ax = plt.subplots(1, len(layout), figsize=(9 * len(layout), 7))
+    if len(layout) == 1:
+        ax = (ax, )
+
+    for i, (title, log, roll_w) in enumerate(list(zip(*[layout, log_scale, rolling_window]))):
+        name, attr = title.split('/')
+        ndf = df[df['name'] == name]
+        for (clabel, cdf), curr_color in zip(ndf.groupby("config"), chosen_colors):
+            cdf = cdf.drop(['config', 'name'], axis=1).dropna(axis=1).astype('float')
+            if average_repetitions:
+                idf = cdf.groupby('iteration').mean().drop('repetition', axis=1)
+                y_values = idf[attr].rolling(roll_w).mean().values
+                if log:
+                    y_values = np.log(y_values)
+                ax[i].plot(idf.index.values, y_values, label=str(clabel), color=curr_color)
+            else:
+                for repet, rdf in cdf.groupby('repetition'):
+                    rdf = rdf.drop('repetition', axis=1)
+                    y_values = rdf[attr].rolling(roll_w).mean().values
+                    if log:
+                        y_values = np.log(y_values)
+                    ax[i].plot(rdf['iteration'].values, y_values,
+                               label='/'.join([str(repet), str(clabel)]), color=curr_color)
+        ax[i].set_xlabel('iteration')
+        ax[i].set_title(title)
+        ax[i].legend()
+    plt.show()
+
+def print_results(df, layout, average_repetitions=False, sort_by=None, ascending=True, n_last=100):
+    """ Show results given by research dataframe.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Research's results
+    layout : str
+        string where each element consists two parts that splited by /. First part is the type
+        of calculated value wrote in the "name" column. Second is name of column  with the parameters
+        that will be drawn.
+    average_repetitions : bool, optional
+        If True, then a separate values will be written
+        else one mean value will be written.
+    sort_by : str or None, optional
+        If not None, column's name to sort.
+    ascending : bool, None
+        Same as in ```pd.sort_value```.
+    n_last : int, optional
+        The number of iterations at the end of which the averaging takes place.
+
+    Returns
+    -------
+        : DataFrame
+        Research results in DataFrame, where indices is a config parameters and colums is `layout` values
+    """
+    columns = []
+    data = []
+
+    name, attr = layout.split('/')
+    ndf = df[df['name'] == name]
+    if average_repetitions:
+        columns.extend([name + '_mean', name + '_std'])
+    else:
+        columns.extend([name + '_' + str(i) for i in [*ndf['repetition'].unique(), 'mean', 'std']])
+    for _, cdf in ndf.groupby("config"):
+        cdf = cdf.drop(['config', 'name'], axis=1).dropna(axis=1).astype('float')
+        if average_repetitions:
+            idf = cdf.groupby('iteration').mean().drop('repetition', axis=1)
+            max_iter = idf.index.max()
+            idf = idf[idf.index > max_iter - n_last]
+            data.append([idf[attr].mean(), idf[attr].std()])
+        else:
+            rep = []
+            for _, rdf in cdf.groupby('repetition'):
+                rdf = rdf.drop('repetition', axis=1)
+                max_iter = rdf['iteration'].max()
+                rdf = rdf[rdf['iteration'] > max_iter - n_last]
+                rep.append(rdf[attr].mean())
+            data.append([*rep, np.mean(rep), np.std(rep)])
+
+    res_df = pd.DataFrame(data=data, index=df['config'].unique(), columns=columns)
+    if sort_by:
+        res_df.sort_values(by=sort_by, ascending=ascending, inplace=True)
+    return res_df
