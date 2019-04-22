@@ -459,10 +459,10 @@ def show_research(df, layout=None, average_repetitions=False, log_scale=False, r
     rolling_window = [x if x is not None else 1 for x in rolling_window]
 
     if color is None:
-        colors = list(mcolors.CSS4_COLORS.keys())
+        color = list(mcolors.CSS4_COLORS.keys())
     df_len = len(df['config'].unique())
-    replace = False if len(colors) > df_len else True
-    chosen_colors = np.random.choice(colors, replace=replace, size=df_len)
+    replace = False if len(color) > df_len else True
+    chosen_colors = np.random.choice(color, replace=replace, size=df_len)
 
     _, ax = plt.subplots(1, len(layout), figsize=(9 * len(layout), 7))
     if len(layout) == 1:
@@ -520,14 +520,15 @@ def print_results(df, layout, average_repetitions=False, sort_by=None, ascending
     """
     columns = []
     data = []
-
+    index = []
     name, attr = layout.split('/')
     ndf = df[df['name'] == name]
     if average_repetitions:
         columns.extend([name + '_mean', name + '_std'])
     else:
         columns.extend([name + '_' + str(i) for i in [*ndf['repetition'].unique(), 'mean', 'std']])
-    for _, cdf in ndf.groupby("config"):
+    for config, cdf in ndf.groupby("config"):
+        index.append(config)
         cdf = cdf.drop(['config', 'name'], axis=1).dropna(axis=1).astype('float')
         if average_repetitions:
             idf = cdf.groupby('iteration').mean().drop('repetition', axis=1)
@@ -543,7 +544,32 @@ def print_results(df, layout, average_repetitions=False, sort_by=None, ascending
                 rep.append(rdf[attr].mean())
             data.append([*rep, np.mean(rep), np.std(rep)])
 
-    res_df = pd.DataFrame(data=data, index=df['config'].unique(), columns=columns)
+    res_df = pd.DataFrame(data=data, index=index, columns=columns)
     if sort_by:
         res_df.sort_values(by=sort_by, ascending=ascending, inplace=True)
     return res_df
+
+def draw_histogram(df, layout, n_last):
+    """Draw histogram of following attribute.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Research's results
+    layout : str
+        string where each element consists two parts that splited by /. First part is the type
+        of calculated value wrote in the "name" column. Second is name of column  with the parameters
+        that will be drawn.
+    n_last : int, optional
+        The number of iterations at the end of which the averaging takes place.
+    """
+    name, attr = layout.split('/')
+    max_iter = df['iteration'].max()
+    mean_val = df[(df['iteration'] > max_iter - n_last) & (df['name'] == name)].groupby('repetition').mean()[attr]
+    plt.figure(figsize=(8, 6))
+    plt.title('Histogram of {}'.format(attr))
+    plt.hist(mean_val)
+    plt.axvline(mean_val.mean(), color='b', linestyle='dashed', linewidth=1, label='mean {}'.format(attr))
+    plt.legend()
+    plt.show()
+    print('Average value (Median) is {:.4}\nStd is {:.4}'.format(mean_val.median(), mean_val.std()))
