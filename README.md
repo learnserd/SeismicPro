@@ -20,7 +20,7 @@ Content
 * [Literature](#Literature)
 
 ## About
-Geolog provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
+SeismicPro provides a framework for machine learning on field seismic data. Read [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) to learn how to index data with respect to traces, field records, shot points etc. Once the data are indexed, it can be loaded and processed. Read the next  [tutorial](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.%20Batch.ipynb) to learn how to perform various actions.
 
 
 ## Installation
@@ -32,7 +32,7 @@ git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 ## File formats
 ### Seismic data
 
-Seiemic data are expected to be in SEG-Y format.
+Seismic data are expected to be in SEG-Y format.
 
 ### SPS data
 
