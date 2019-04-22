@@ -526,7 +526,7 @@ class SeismicBatch(Batch):
     def _load_picking(self, components):
         """Load picking from file."""
         idf = self.index.get_df(reset=False)
-        res = np.split(idf.y, np.cumsum(self.index.tracecounts))[:-1]
+        res = np.split(idf.FIRST_BREAK_TIME, np.cumsum(self.index.tracecounts))[:-1]
         self.add_components(components, init=res)
         return self
 
