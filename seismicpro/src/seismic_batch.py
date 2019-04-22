@@ -784,9 +784,13 @@ class SeismicBatch(Batch):
         if src_picking is not None:
             picking = getattr(self, src_picking)[pos]
             if to_samples:
-                tick = np.diff(self.meta[src[0]]['samples'])[0]
+                samples = self.meta[src[0]]['samples']
+                tick = samples[1] - samples[0]
                 picking /= tick
             pts_picking = (range(len(picking)), picking)
+        else:
+            pts_picking = None
+
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
