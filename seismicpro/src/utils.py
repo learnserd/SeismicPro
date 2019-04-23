@@ -227,7 +227,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def spectral_statistics(data, rate):
+def spectral_statistics(data, rate, tslice=None):
     """Calculate basic statistics (rms, sts, total variance, mode) of trace
     power spectrum.
 
@@ -243,6 +243,9 @@ def spectral_statistics(data, rate):
     stats : array
         Arrays of rms, sts, total variance, mode for each trace.
     """
+    if tslice is not None:
+        data = data[:, tslice]
+
     spec = abs(np.fft.rfft(data, axis=1))**2
     var = np.sum(abs(np.diff(spec, axis=1)), axis=1)
     spec = spec / spec.sum(axis=1).reshape((-1, 1))
@@ -251,9 +254,10 @@ def spectral_statistics(data, rate):
     mean = (freqs * spec).sum(axis=1)
     mean2 = (freqs**2 * spec).sum(axis=1)
     std = np.sqrt(mean2 - mean**2)
-    return (np.sqrt(mean2), std, var, peak)
+    return np.array([np.sqrt(mean2), std, var, peak])
 
-def time_statistics(data):
+
+def time_statistics(data, tslice=None):
     """Calculate basic statistics (rms, sts, total variance, mode) for traces.
 
     Parameters
@@ -268,33 +272,37 @@ def time_statistics(data):
     stats : array
         Arrays of rms, sts, total variance, mode for each trace.
     """
+    if tslice is not None:
+        data = data[:, tslice]
+
     peak = np.max(abs(data), axis=1)
     mean = np.mean(abs(data), axis=1)
     std = np.std(data, axis=1)
     mean2 = std**2 + mean**2
     var = np.sum(abs(np.diff(data, axis=1)), axis=1)
-    return (np.sqrt(mean2), std, var, peak)
+    res = (np.sqrt(mean2), std, var, peak)
+    return np.array([np.sqrt(mean2), std, var, peak])
 
-def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
-                    figsize=None, **kwargs):
+def show_statistics(data, iline, xline, nrows=1, ncols=1, 
+                    figsize=None, titles=None, **kwargs):
     """Show statistics in 2D plots.
 
     Parameters
     ----------
     data : array-like
-        Array of traces.
-    domain : str, 'time' or 'frequency'
-        Domain to calculate statistics in.
-    rate : scalar
-        Sampling rate.
-    tslice : slice, default to None
-        Slice of time samples to select from data.
+        Arrays of statistics to show.
     iline : array-like
         Array of inline numbers.
     xline : array-like
         Array of crossline numbers.
+    nrows : int
+        Number of rows for subplots.
+    ncols : int
+        Number of columns in subplots.
     figsize : array-like, optional
         Output plot size.
+    titles : array of strings
+        Titles for subplots.
     kwargs : dict
         Named argumets to matplotlib.pyplot.imshow.
 
@@ -302,26 +310,18 @@ def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
     -------
     Plots of statistics distribution.
     """
-    if tslice is not None:
-        data = data[:, tslice]
+    if (ncols == 1) and (nrows == 1):
+        data = np.atleast_2d(data)
 
-    if domain == 'time':
-        vals = time_statistics(data)
-    elif domain == 'frequency':
-        vals = spectral_statistics(data, rate)
-    else:
-        raise ValueError('Unknown domain.')
-
-    titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
     enc = preprocessing.LabelEncoder()
     x = enc.fit_transform(iline)
     xc = enc.classes_
     y = enc.fit_transform(xline)
     yc = enc.classes_
-    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
     im = np.zeros((len(xc), len(yc)))
     for i, ax in enumerate(axes.reshape(-1)):
-        im[x, y] = vals[i]
+        im[x, y] = data[i]
         plot = ax.imshow(im.T, **kwargs)
         step = len(xc) // 9
         ax.set_xticks(np.arange(0, len(xc), step))
@@ -330,8 +330,11 @@ def show_statistics(data, domain, iline, xline, rate=None, tslice=None,
         ax.set_yticks(np.arange(0, len(yc), step))
         ax.set_yticklabels(yc[::step])
         ax.set_aspect('auto')
-        ax.set_xlabel('INLINE'), ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
-        ax.set_title(titles[i])
+        ax.set_xlabel('INLINE') # pylint: disable=expression-not-assigned
+        ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
+        if titles is not None:
+            ax.set_title(titles[i])
+
         fig.colorbar(plot, ax=ax)
 
     plt.show()

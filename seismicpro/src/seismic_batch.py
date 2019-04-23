@@ -2,7 +2,6 @@
 import os
 from textwrap import dedent
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import signal
 import pywt
@@ -13,9 +12,10 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 from .seismic_index import SegyFilesIndex
 from .batch_tools import FILE_DEPENDEND_COLUMNS
 from .utils import (IndexTracker, partialmethod, write_segy_file,
-                    spectrum_plot, seismic_plot, show_statistics)
+                    spectrum_plot, seismic_plot, time_statistics,
+                    spectral_statistics, show_statistics)
 
-PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'ShotPoint', 'timeOffset']
+PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
 
 ACTIONS_DICT = {
@@ -149,8 +149,8 @@ class SeismicBatch(Batch):
     1. Using parameter ``components`` in ``load``.
     2. Using parameter ``dst`` with init function named ``_init_component``.
     """
-    def __init__(self, index, preloaded=None, *args, **kwargs):
-        super().__init__(index, preloaded=preloaded, *args, **kwargs)
+    def __init__(self, index, *args, preloaded=None, **kwargs):
+        super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.meta = dict()
 
@@ -477,7 +477,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.vstack(getattr(self, src)).ravel()
+        data = np.concatenate(getattr(self, src))
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -519,23 +519,15 @@ class SeismicBatch(Batch):
         if fmt.lower() in ['sgy', 'segy']:
             return self._load_segy(src=components, dst=components, **kwargs)
         if fmt == 'picks':
-            return self._load_picking(src=src, components=components)
+            return self._load_picking(components=components)
 
         return super().load(src=src, fmt=fmt, components=components, **kwargs)
 
-    def _load_picking(self, src, components):
+    def _load_picking(self, components):
         """Load picking from file."""
-        df = pd.read_csv(src)
-        df.columns = pd.MultiIndex.from_arrays([df.columns, [''] * len(df.columns)])
-        idf = self.index.get_df()
-
-        df = idf.merge(df, how='left')
-        if self.index.name is not None:
-            df = df.set_index(self.index.name)
-
-        res = [df.loc[i, 'timeOffset'].values for i in self.indices]
-        setattr(self, components, res)
-        self.add_components(components)
+        idf = self.index.get_df(reset=False)
+        res = np.split(idf.FIRST_BREAK_TIME, np.cumsum(self.index.tracecounts))[:-1]
+        self.add_components(components, init=res)
         return self
 
     @apply_to_each_component
@@ -564,7 +556,6 @@ class SeismicBatch(Batch):
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
         all_traces = np.concatenate(getattr(batch, dst))[order]
         self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
-        self.add_components(dst)
 
         if self.index.name is None:
             res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
@@ -572,7 +563,7 @@ class SeismicBatch(Batch):
             lens = self.index.tracecounts
             res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
-        setattr(self, dst, res)
+        self.add_components(dst, init=res)
         self.meta[dst]['sorting'] = None
 
         return self
@@ -746,8 +737,8 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                     pts=None, s=None, c=None, figsize=None,
+    def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+                     src_picking=None, s=None, c=None, figsize=None,
                      save_to=None, dpi=None, **kwargs):
         """Plot seismic traces.
 
@@ -757,16 +748,18 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
+        sample_tick : int
+            Number of miliseconds between samples.
         wiggle : bool, default to False
             Show traces in a wiggle form.
-        xlim : tuple, optional
+        xlim : tuple, optionalgit
             Range in x-axis to show.
         ylim : tuple, optional
             Range in y-axis to show.
         std : scalar, optional
             Amplitude scale for traces in wiggle form.
-        pts : array_like, shape (n, )
-            The points data positions.
+        src_picking : str
+            Component with picking data.
         s : scalar or array_like, shape (n, ), optional
             The marker size in points**2.
         c : color, sequence, or sequence of color, optional
@@ -788,13 +781,24 @@ class SeismicBatch(Batch):
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
+        if src_picking is not None:
+            picking = getattr(self, src_picking)[pos]
+            if to_samples:
+                samples = self.meta[src[0]]['samples']
+                tick = samples[1] - samples[0]
+                picking /= tick
+            pts_picking = (range(len(picking)), picking)
+        else:
+            pts_picking = None
+
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts, s=s, c=c, figsize=figsize, names=names,
+                     pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
                      save_to=save_to, dpi=dpi, **kwargs)
+        return self
 
-    def spectrum_plot(self, src, index, frame, rate, max_freq=None,
+    def spectrum_plot(self, src, index, frame, max_freq=None,
                       figsize=None, save_to=None, **kwargs):
         """Plot seismogram(s) and power spectrum of given region in the seismogram(s).
 
@@ -806,8 +810,6 @@ class SeismicBatch(Batch):
             Data index to show.
         frame : tuple
             List of slices that frame region of interest.
-        rate : scalar
-            Sampling rate.
         max_freq : scalar
             Upper frequence limit.
         figsize : array-like, optional
@@ -827,10 +829,13 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
+        samples = self.meta[src[0]]['samples']
+        rate = samples[1] - samples[0]
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
+        return self
 
-    def show_statistics(self, src, index, domain, rate=None, tslice=None,
+    def show_statistics(self, src, index, domain, tslice=None,
                         figsize=None, **kwargs):
         """Show statistics in 2D plots.
 
@@ -842,8 +847,6 @@ class SeismicBatch(Batch):
             Data index to select data from.
         domain : str, 'time' or 'frequency'
             Domain to calculate statistics in.
-        rate : scalar
-            Sampling rate.
         tslice : slice, default to None
             Slice of time samples to select from data.
         figsize : array-like, optional
@@ -857,7 +860,21 @@ class SeismicBatch(Batch):
         """
         pos = self.get_pos(None, src, index)
         data = getattr(self, src)[pos]
+        if tslice is not None:
+            data = data[:, tslice]
+
         iline = self.index.get_df(index)['INLINE_3D']
         xline = self.index.get_df(index)['CROSSLINE_3D']
-        show_statistics(data, domain=domain, iline=iline, xline=xline,
-                        rate=rate, tslice=tslice, figsize=figsize, **kwargs)
+        if domain == 'time':
+            vals = time_statistics(data)
+        elif domain == 'frequency':
+            samples = self.meta[src]['samples']
+            rate = samples[1] - samples[0]
+            vals = spectral_statistics(data, rate)
+        else:
+            raise ValueError('Unknown domain.')
+
+        titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
+        show_statistics(vals, iline=iline, xline=xline, nrows=2, ncols=2,
+                        figsize=figsize, titles=titles, **kwargs)
+        return self
