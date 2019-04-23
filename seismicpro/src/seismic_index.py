@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
+import segyio
 
 from ..batchflow import DatasetIndex
 
@@ -266,7 +267,10 @@ class CustomIndex(TraceIndex):
     def __init__(self, *args, **kwargs):
         index_name = kwargs['index_name']
         if index_name is not None:
-            extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
+            extra_headers = kwargs.get('extra_headers', [])
+            if extra_headers == 'all':
+                extra_headers = [h.__str__() for h in segyio.TraceField.enums()]
+
             kwargs['extra_headers'] = list(set(extra_headers + [index_name]))
         super().__init__(*args, **kwargs)
 
