@@ -20,6 +20,7 @@ Content
 * [Literature](#Literature)
 
 ## About
+
 SeismicPro provides a framework for machine learning on field seismic data.
 
 
