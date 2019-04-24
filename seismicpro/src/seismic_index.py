@@ -302,7 +302,10 @@ class KNNIndex(TraceIndex):
 
     def build_df(self, n_neighbors, **kwargs):
         """Build DataFrame."""
-        extra_headers = kwargs['extra_headers'] if 'extra_headers' in kwargs.keys() else []
+        extra_headers = kwargs.get('extra_headers', [])
+        if extra_headers == 'all':
+            extra_headers = [h.__str__() for h in segyio.TraceField.enums()]
+
         kwargs['extra_headers'] = list(set(extra_headers + ['CDP_X', 'CDP_Y']))
         field_index = FieldIndex(**kwargs)
         dfs = []
