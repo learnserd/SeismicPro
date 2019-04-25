@@ -435,6 +435,8 @@ class SeismicBatch(Batch):
 
         write_segy_file(data, df, self.meta[src]['samples'], path)
 
+        return self
+
     def _dump_single_segy(self, src, path):
         """Dump data to segy file."""
         data = np.vstack(getattr(self, src))
