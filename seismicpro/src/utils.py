@@ -152,9 +152,9 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
             ax[0, i].set_title(names[i])
 
         if arr.ndim == 2:
-            plt.ylim([ylim[1], ylim[0]])
+            ax[0, i].set_ylim([ylim[1], ylim[0]])
             if (not wiggle) or (pts is not None):
-                plt.xlim(xlim)
+                ax[0, i].set_xlim(xlim)
 
         if arr.ndim == 1:
             plt.xlim(xlim)
