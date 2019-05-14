@@ -202,16 +202,17 @@ class SeismicBatch(Batch):
             if isinstance(src, str):
                 src = (src, )
 
-            mask = np.array(mask).sum(axis=1, dtype=bool)
-
-            new_idf = self.index.get_df(index=mask.ravel(), reset=False)
+            mask = np.concatenate((np.array(mask)))
+            new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
             new_index = new_idf.index.unique()
-            batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
+            batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
+                                                      index_name=self.index.name)
 
             batch = type(self)(batch_index)
             for comp in self.components:
                 setattr(batch, comp, np.array([None] * len(batch.index)))
             batch.add_components(self.components)
+            batch.meta = self.meta
 
             for i, index in enumerate(new_index):
                 for isrc in batch.components:
