@@ -10,10 +10,9 @@ import segyio
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
-from .batch_tools import FILE_DEPENDEND_COLUMNS
-from .utils import (IndexTracker, partialmethod, write_segy_file,
-                    spectrum_plot, seismic_plot, time_statistics,
-                    spectral_statistics, show_statistics)
+from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
+                    time_statistics, spectral_statistics)
+from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, show_statistics
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
@@ -528,7 +527,8 @@ class SeismicBatch(Batch):
     def _load_picking(self, components):
         """Load picking from file."""
         idf = self.index.get_df(reset=False)
-        res = np.split(idf.FIRST_BREAK_TIME, np.cumsum(self.index.tracecounts))[:-1]
+        res = np.split(idf.FIRST_BREAK_TIME.values,
+                       np.cumsum(self.index.tracecounts))[:-1]
         self.add_components(components, init=res)
         return self
 
@@ -788,7 +788,7 @@ class SeismicBatch(Batch):
             if to_samples:
                 samples = self.meta[src[0]]['samples']
                 tick = samples[1] - samples[0]
-                picking /= tick
+                picking = picking / tick
             pts_picking = (range(len(picking)), picking)
         else:
             pts_picking = None

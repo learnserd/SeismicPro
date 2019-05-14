@@ -6,7 +6,8 @@ import segyio
 
 from ..batchflow import DatasetIndex
 
-from . import batch_tools as bt
+from . import utils as ut
+from .plot_utils import show_2d_heatmap, show_1d_heatmap
 
 
 class TraceIndex(DatasetIndex):
@@ -203,9 +204,9 @@ class TraceIndex(DatasetIndex):
     def build_df(self, **kwargs):
         """Build DataFrame."""
         if 'dfx' in kwargs.keys():
-            return bt.build_sps_df(**kwargs)
+            return ut.build_sps_df(**kwargs)
 
-        return bt.build_segy_df(**kwargs)
+        return ut.build_segy_df(**kwargs)
 
     def build_from_index(self, index, idf):
         """Build index from another index for indices given."""
@@ -388,7 +389,7 @@ class BinsIndex(TraceIndex):
 
     def build_df(self, **kwargs):
         """Build DataFrame."""
-        df, meta = bt.make_bin_index(**kwargs)
+        df, meta = ut.make_bin_index(**kwargs)
         self.meta.update(meta)
         return df
 
@@ -396,6 +397,6 @@ class BinsIndex(TraceIndex):
         """2d histogram of CDP distribution between bins."""
         bin_size = self.meta['bin_size']
         if isinstance(bin_size, (list, tuple, np.ndarray)):
-            bt.show_2d_heatmap(self._idf, **kwargs)
+            show_2d_heatmap(self._idf, **kwargs)
         else:
-            bt.show_1d_heatmap(self._idf, **kwargs)
+            show_1d_heatmap(self._idf, **kwargs)
