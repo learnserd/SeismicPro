@@ -68,6 +68,13 @@ See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/data
 
 ## Models
 
+|Model|Architecture|Dataset|Metrics|Link|
+|---|---|---:|---:|---:|
+|Noise attenuation| U-Net 1D| Datasets 1, 2 for NA| 0.01 L1 | [https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb)
+|Masked noise attenuation| U-Net attention 1D| Datasets 1, 2 for NA | 0.01 L1, 0.02 L1 in GR area| [https://github.com/analysiscenter/SeismicPro/blob/attention/notebooks/attention-demo.ipynb](https://github.com/analysiscenter/SeismicPro/blob/attention/notebooks/attention-demo.ipynb)
+|First-break picking| U-Net 1D | Datasets 1, 2, 3 for FB picking | 1.6 MAE, for 94% traces error is less than 3 samples| [https://github.com/analysiscenter/SeismicPro/blob/supervised_picking/models/First_break_picking/model_estimation.ipynb](https://github.com/analysiscenter/SeismicPro/blob/supervised_picking/models/First_break_picking/model_estimation.ipynb)
+|Trace Inversion Detection | RandomForest | Dataset 1 for FB picking | 93% accuracy |  [https://github.com/analysiscenter/SeismicPro/blob/action_traces/models/Inverse_traces/find_inverse_traces.ipynb](https://github.com/analysiscenter/SeismicPro/blob/action_traces/models/Inverse_traces/find_inverse_traces.ipynb)|
+
 ### Ground-roll attenuation
 
 See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb) for description of the ground-roll attenuation model.
@@ -89,4 +96,3 @@ LEARNING APPROACH](https://arxiv.org/pdf/1506.05070)
 Advanced Technology of Image Analysis](https://tel.archives-ouvertes.fr/tel-00731886/document)
 * [CNN-based seismic facies clasification](https://cs230.stanford.edu/projects_spring_2018/reports/8291004.pdf)
 * [Learning to Label Seismic Structures with Deconvolution Networks and Weak Labels](http://www.yalaudah.com/assets/files/seg2018.pdf)
-
