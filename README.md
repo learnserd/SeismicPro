@@ -33,10 +33,10 @@ git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 
 A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
-1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
-2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.%20Ground-roll%20attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
-4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.%20First-break%20picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
+1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
+2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
+3. [Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
+4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.First-break_picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
 
 
 ## File formats
@@ -60,7 +60,7 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 ### Ground-roll attenuation
 
-See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/ground-roll_attenuation.ipynb) for description of datasets.
+See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) for description of datasets.
 
 ### First-break picking
 
