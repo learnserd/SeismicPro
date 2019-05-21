@@ -69,7 +69,7 @@ See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/data
 ## Models
 
 |Model|Architecture|Dataset|Metrics|
-|---|---|---:|---:|---:|
+|---|---|---|---|
 |[Noise attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb)| U-Net 1D| Datasets 1, 2 for NA| 0.01 L1 
 |[Masked noise attenuation](https://github.com/analysiscenter/SeismicPro/blob/attention/notebooks/attention-demo.ipynb)| U-Net attention 1D| Datasets 1, 2 for NA | 0.01 L1, 0.02 L1 in GR area
 |[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/supervised_picking/models/First_break_picking/model_estimation.ipynb)| U-Net 1D | Datasets 1, 2, 3 for FB picking | 1.6 MAE, for 94% traces error is less than 3 samples
