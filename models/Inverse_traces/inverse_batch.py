@@ -3,13 +3,18 @@ import sys
 import numpy as np
 import torch
 
+from sklearn.linear_model import LinearRegression
+
 sys.path.append('../..')
 from seismicpro.batchflow import action, inbatch_parallel # pylint: disable=wrong-import-position
 from seismicpro.src import SeismicBatch # pylint: disable=wrong-import-position
 
+
 def predict(data, model):
     """Predict first break piking on given data."""
-    pred = model(data).cpu().detach().numpy().reshape(2, -1)
+    model.eval()
+    with torch.no_grad():
+        pred = model(data).cpu().detach().numpy().reshape(2, -1)
     arr = np.argmax(pred, axis=0)
     arr = np.insert(arr, 0, 0)
     arr = np.append(arr, 0)
@@ -32,6 +37,35 @@ def crop_trace(trace, pred, size):
         right = pred + int(size/2)
     return np.array(trace[left: right])
 
+def calculate_corr(corr_vec, field, i, neig, pred, size, tp):
+    if tp == 'whole':
+        left_vec = crop_trace(field[i-neig], pred[i-neig][0], size)
+        right_vec = crop_trace(field[i+neig], pred[i+neig][0], size)
+        inv_left_vec = crop_trace((-1)*field[i-neig], pred[i-neig][1], size)
+        inv_right_vec = crop_trace((-1)*field[i+neig], pred[i+neig][1], size)
+        corr_left = np.corrcoef(left_vec, corr_vec)[0][1]
+        corr_right = np.corrcoef(right_vec, corr_vec)[0][1]
+        inv_corr_left = np.corrcoef(inv_left_vec, corr_vec)[0][1]
+        inv_corr_right= np.corrcoef(inv_right_vec, corr_vec)[0][1]
+
+    elif tp == 'on_left':
+        corr_left = 0
+        inv_corr_left = 0
+        right_vec = crop_trace(field[i+neig], pred[i+neig][0], size)
+        inv_right_vec = crop_trace((-1)*field[i+neig], pred[i+neig][1], size)
+        corr_right = np.corrcoef(right_vec, corr_vec)[0][1]
+        inv_corr_right = np.corrcoef(inv_right_vec, corr_vec)[0][1]
+
+    elif tp == 'on_right':
+        corr_right = 0
+        inv_corr_right = 0
+        left_vec = crop_trace(field[i-neig], pred[i-neig][0], size)
+        inv_left_vec = crop_trace((-1)*field[i-neig], pred[i-neig][1], size)
+        corr_left = np.corrcoef(left_vec, corr_vec)[0][1]
+        inv_corr_left = np.corrcoef(inv_left_vec, corr_vec)[0][1]
+    
+    return corr_left, corr_right, inv_corr_left, inv_corr_right
+
 class InverseBatch(SeismicBatch): #pylint: disable=too-few-public-methods
     """Class consists one action to generate a dataset
     with inverse traces. Depend on SeismicBatch class.
@@ -52,16 +86,17 @@ class InverseBatch(SeismicBatch): #pylint: disable=too-few-public-methods
             component's name with data
         mode : str
             There are two generation mode - 'generate' and 'predict'.
-            If mode = 'generate' then function save dataset with equal number
+            If mode == 'generate' then function save dataset with equal number
             of normal and inverce traces to dst. If 'predict' then small number of traces
             will be inversed and dataset will have the same size as input field.
+            If mode == 'without_inv' then dataset will consist the features for input traces.
         dst : str or None, optional
             component's name to save resulted data.
         size : int
             size of the vectors t
         """
 
-        if mode not in ['generate', 'predict']:
+        if mode not in ['generate', 'predict', 'without_inv']:
             raise ValueError('Incorrect value of "mode" parameter.')
 
         dst = src if dst is None else dst
@@ -79,7 +114,14 @@ class InverseBatch(SeismicBatch): #pylint: disable=too-few-public-methods
         inv_ix = np.zeros(field.shape[0])
         mask = np.random.choice(range(len(inv_ix)), size=np.random.randint(1, 5))
         inv_ix[mask] = 1
-
+        
+        lr = LinearRegression()
+        data_tr = np.stack((offset, np.ones(len(offset)))).T
+        target = np.array(pred)[:, 0].reshape(-1, 1)
+        lr.fit(data_tr, target)
+        off_pred = [int(lr.predict([[off, 1]])[0][0]) for off in offset]
+        off_pred = np.array([off_pred, off_pred]).T
+        
         for i, (trace, inv_trace, norm_predict, off) in enumerate(zip(field, -field,
                                                                       pred, offset)):
             traces = [(trace, norm_predict[0]), (inv_trace, norm_predict[1])]
@@ -89,78 +131,63 @@ class InverseBatch(SeismicBatch): #pylint: disable=too-few-public-methods
                     continue
                 elif j == 0 and mode == 'predict' and inv_ix[i] == 1:
                     continue
-
+                elif j == 1 and mode == 'without_inv':
+                    continue
                 amp_val = trs[prs]
-
+                off_vec = crop_trace(trs, off_pred[i][0], size)
                 corr_vec = crop_trace(trs, prs, size)
-                amp_left = []
-                amp_right = []
-                inv_amp_left = []
-                inv_amp_right = []
-                diff_pred_left = []
-                diff_pred_right = []
-                inv_diff_pred_left = []
-                inv_diff_pred_right = []
+
                 corr_left = []
                 corr_right = []
                 inv_corr_left = []
                 inv_corr_right = []
+                of_corr_left = []
+                of_corr_right = []
+                of_inv_corr_left = []
+                of_inv_corr_right = []
                 for neig in range(1, num_neig+1):
                     if i >= neig and i < len(field) - neig:
-                        amp_left.append(amp_val - field[i-neig][pred[i-neig][0]])
-                        amp_right.append(amp_val - field[i+neig][pred[i+neig][0]])
-                        inv_amp_left.append(amp_val - (-1)*field[i-neig][pred[i-neig][1]])
-                        inv_amp_right.append(amp_val - (-1)*field[i+neig][pred[i+neig][1]])
-                        diff_pred_left.append(pred[i][j] - pred[i-neig][0])
-                        diff_pred_right.append(pred[i][j] - pred[i+neig][0])
-                        inv_diff_pred_left.append(pred[i][j] - pred[i-neig][1])
-                        inv_diff_pred_right.append(pred[i][j] - pred[i+neig][1])
+                        result_corr = calculate_corr(corr_vec, field, i, neig, pred, size, 'whole')
+                        corr_left.append(result_corr[0])
+                        corr_right.append(result_corr[1])
+                        inv_corr_left.append(result_corr[2])
+                        inv_corr_right.append(result_corr[3])
 
-                        left_vec = crop_trace(field[i-neig], pred[i-neig][0], size)
-                        right_vec = crop_trace(field[i+neig], pred[i+neig][0], size)
-                        inv_left_vec = crop_trace((-1)*field[i-neig], pred[i-neig][1], size)
-                        inv_right_vec = crop_trace((-1)*field[i+neig], pred[i+neig][1], size)
-                        corr_left.append(np.corrcoef(left_vec, corr_vec)[0][1])
-                        corr_right.append(np.corrcoef(right_vec, corr_vec)[0][1])
-                        inv_corr_left.append(np.corrcoef(inv_left_vec, corr_vec)[0][1])
-                        inv_corr_right.append(np.corrcoef(inv_right_vec, corr_vec)[0][1])
+                        off_result_corr = calculate_corr(off_vec, field, i, neig, off_pred, size, 'whole')
+                        of_corr_left.append(off_result_corr[0])
+                        of_corr_right.append(off_result_corr[1])
+                        of_inv_corr_left.append(off_result_corr[2])
+                        of_inv_corr_right.append(off_result_corr[3])
 
                     elif i < neig:
-                        amp_left.append(0)
-                        diff_pred_left.append(0)
-                        inv_amp_left.append(0)
-                        inv_diff_pred_left.append(0)
-                        corr_left.append(0)
-                        inv_corr_left.append(0)
-                        amp_right.append(amp_val - field[i+neig][pred[i+neig][0]])
-                        inv_amp_right.append(amp_val - (-1)*field[i+neig][pred[i+neig][1]])
-                        diff_pred_right.append(pred[i][j] - pred[i+neig][0])
-                        inv_diff_pred_right.append(pred[i][j] - pred[i+neig][1])
+                        
+                        result_corr = calculate_corr(corr_vec, field, i, neig, pred, size, 'on_left')
+                        corr_left.append(result_corr[0])
+                        corr_right.append(result_corr[1])
+                        inv_corr_left.append(result_corr[2])
+                        inv_corr_right.append(result_corr[3])
+                        
+                        off_result_corr = calculate_corr(off_vec, field, i, neig, off_pred, size, 'on_left')
+                        of_corr_left.append(off_result_corr[0])
+                        of_corr_right.append(off_result_corr[1])
+                        of_inv_corr_left.append(off_result_corr[2])
+                        of_inv_corr_right.append(off_result_corr[3])
 
-                        right_vec = crop_trace(field[i+neig], pred[i+neig][0], size)
-                        inv_right_vec = crop_trace((-1)*field[i+neig], pred[i+neig][1], size)
-                        corr_right.append(np.corrcoef(right_vec, corr_vec)[0][1])
-                        inv_corr_right.append(np.corrcoef(inv_right_vec, corr_vec)[0][1])
                     else:
-                        amp_right.append(0)
-                        diff_pred_right.append(0)
-                        inv_amp_right.append(0)
-                        inv_diff_pred_right.append(0)
-                        corr_right.append(0)
-                        inv_corr_right.append(0)
-                        amp_left.append(amp_val - field[i-neig][pred[i-neig][0]])
-                        inv_amp_left.append(amp_val - (-1)*field[i-neig][pred[i-neig][1]])
-                        diff_pred_left.append(pred[i][j] - pred[i-neig][0])
-                        inv_diff_pred_left.append(pred[i][j] - pred[i-neig][1])
-
-                        left_vec = crop_trace(field[i-neig], pred[i-neig][0], size)
-                        inv_left_vec = crop_trace((-1)*field[i-neig], pred[i-neig][1], size)
-                        corr_left.append(np.corrcoef(left_vec, corr_vec)[0][1])
-                        inv_corr_left.append(np.corrcoef(inv_left_vec, corr_vec)[0][1])
-
-                data.append([amp_val, off, *amp_left, *inv_amp_left, *amp_right, *inv_amp_right,
-                             *diff_pred_left, *inv_diff_pred_left, *diff_pred_right,
-                             *inv_diff_pred_right, *corr_left, *corr_right,
+                        result_corr = calculate_corr(corr_vec, field, i, neig, pred, size, 'on_right')
+                        corr_left.append(result_corr[0])
+                        corr_right.append(result_corr[1])
+                        inv_corr_left.append(result_corr[2])
+                        inv_corr_right.append(result_corr[3])
+                        
+                        off_result_corr = calculate_corr(off_vec, field, i, neig, off_pred, size, 'on_right')
+                        of_corr_left.append(off_result_corr[0])
+                        of_corr_right.append(off_result_corr[1])
+                        of_inv_corr_left.append(off_result_corr[2])
+                        of_inv_corr_right.append(off_result_corr[3])
+                data.append([amp_val, off, *of_corr_left, *of_corr_right,
+                             *of_inv_corr_left, *of_inv_corr_right,
+                             *corr_left, *corr_right,
                              *inv_corr_left, *inv_corr_right, j])
         getattr(self, dst)[pos] = data
         return self
