@@ -740,8 +740,8 @@ class SeismicBatch(Batch):
         return fig, tracker
 
     def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                     src_picking=None, s=None, c=None, figsize=None,
-                     save_to=None, dpi=None, **kwargs):
+                     src_picking=None, s=None, scatter_color=None, figsize=None,
+                     save_to=None, dpi=None, line_color=None, title=None, **kwargs):
         """Plot seismic traces.
 
         Parameters
@@ -764,7 +764,7 @@ class SeismicBatch(Batch):
             Component with picking data.
         s : scalar or array_like, shape (n, ), optional
             The marker size in points**2.
-        c : color, sequence, or sequence of color, optional
+        scatter_color : color, sequence, or sequence of color, optional
             The marker color.
         figsize : array-like, optional
             Output plot size.
@@ -772,6 +772,10 @@ class SeismicBatch(Batch):
             If not None, save plot to given path.
         dpi : int, optional, default: None
             The resolution argument for matplotlib.pyplot.savefig.
+        line_color : color, sequence, or sequence of color, optional, default: None
+            The trace color.
+        title : str
+            Plot title.
         kwargs : dict
             Additional keyword arguments for plot.
 
@@ -796,8 +800,9 @@ class SeismicBatch(Batch):
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
-                     save_to=save_to, dpi=dpi, **kwargs)
+                     pts=pts_picking, s=s, scatter_color=scatter_color, 
+                     figsize=figsize, names=names, save_to=save_to,
+                     dpi=dpi, line_color=line_color, title=title, **kwargs)
         return self
 
     def spectrum_plot(self, src, index, frame, max_freq=None,
