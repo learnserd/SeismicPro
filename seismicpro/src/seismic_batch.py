@@ -209,11 +209,11 @@ class SeismicBatch(Batch):
                                                       index_name=self.index.name)
 
             batch = type(self)(batch_index)
-            for comp in self.components:
-                setattr(batch, comp, np.array([None] * len(batch.index)))
             batch.add_components(self.components)
             batch.meta = self.meta
 
+            for comp in batch.components:
+                setattr(batch, comp, np.array([None] * len(batch.index)))
             for i, index in enumerate(new_index):
                 for isrc in batch.components:
                     pos = self.get_pos(None, isrc, index)
