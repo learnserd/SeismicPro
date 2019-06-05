@@ -1,6 +1,0 @@
-{
-  "load_extensions": {
-    "ipyvolume/extension": true,
-    "jupyter-js-widgets/extension": true
-  }
-}
