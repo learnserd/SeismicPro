@@ -209,10 +209,10 @@ class SeismicBatch(Batch):
             batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
 
             batch = type(self)(batch_index)
+            batch.add_components(self.components)
             for comp in self.components:
                 setattr(batch, comp, np.array([None] * len(batch.index)))
-            batch.add_components(self.components)
-
+            batch.meta = self.meta
             for i, index in enumerate(new_index):
                 for isrc in batch.components:
                     pos = self.get_pos(None, isrc, index)
@@ -494,7 +494,10 @@ class SeismicBatch(Batch):
         df['timeOffset'] = data
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
-        df.to_csv(path, index=False)
+        
+        for i in [0, 2, 4]:
+            df.insert(i, str(i), "")
+        df.to_csv(path, index=False, sep='\t', header=False, encoding='ascii', mode='a')
         return self
 
     @action
