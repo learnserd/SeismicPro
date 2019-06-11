@@ -1,9 +1,7 @@
 #!/bin/bash
 
 set -e
-
-mkdir $PWD/data 
-
+ 
 path="../../../data/"
 
 data_vol=${DATA_DIR:-$PWD/data}

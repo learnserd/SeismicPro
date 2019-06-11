@@ -8,7 +8,7 @@ To install Docker execute `utils/install_docker.sh`.
 # Inference Image
 To build the image for inference execute the following command from the parent docker_container directory
 
-`docker build -t image_name -f docker_container/Dockerfile`
+`docker build -t image_name -f docker_container/Dockerfile .`
 
 
 # How to run inference script
