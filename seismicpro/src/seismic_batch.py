@@ -120,7 +120,6 @@ def add_actions(actions_dict, template_docstring):
         return cls
     return decorator
 
-
 @add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
     """Batch class for seimsic data. Contains seismic traces, metadata and processing methods.
@@ -712,6 +711,67 @@ class SeismicBatch(Batch):
                 mask.append(np.max(diff_zeros) < num_zero)
         return mask
 
+    @action
+    @inbatch_parallel(init='_init_component')
+    def field_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4):
+        r""" Straightening up the travel time curve with normal grading. Shift for each
+        time value calculated by following way:
+
+        $$\vartriangle t = t(0) \left(\left( 1 + \left( \frac{x}{V(t) t(0)}\right)\right)^{1/2} - 1\right)$$
+
+        New amplitude value for t(0) is the mean value of ```num_mean_tr```'s adjacent
+        amplitudes from $t(0) + \vartriangle t$.
+
+        Parameters
+        ----------
+        speed : array or array of arrays
+            Speed law for traces.
+        num_mean_tr : int ,optional default 4
+            Number of timestamps to meaning new amplitude value.
+
+        Returns
+        -------
+            : SeismicBatch
+            Traces straightened on the basis of speed and time values.
+
+        Note
+        ----
+        Works only with FieldIndex with CDP index.
+        """
+        dst = src if dst is None else dst
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        offset = np.array(self.index.get_df(index=index)['offset'])
+        speed_conc = np.array(speed[:field.shape[1]])
+        if len(speed_conc) != field.shape[1]:
+            raise ValueError('Speed must have shape equal to trace lenght, not {} but {}'.format(speed_conc.shape[0],
+                                                                                                 field.shape[1]))
+        t_zero = (np.arange(1, field.shape[1]+1)*2)/1000
+        time_range = np.arange(0, field.shape[1])
+        new_field = []
+
+        calc_delta = lambda t_z, spd, ofst: t_z*((1 + (ofst/(spd*t_z+1e-6))**2)**.5 - 1)
+
+        for ix, off in enumerate(offset):
+            time_x = calc_delta(t_zero, speed_conc, off)
+            shift = np.round(time_x*50).astype(int)
+            down_ix = time_range + shift
+
+            left = -int(num_mean_tr/2) + (~num_mean_tr % 2)
+            right = int(num_mean_tr/2) + 1
+            mean_traces = np.array([i for i in range(left, right)]).reshape(-1, 1)
+
+            zeros = np.zeros((num_mean_tr, *down_ix.shape)) + [down_ix]*num_mean_tr + mean_traces
+            zeros[zeros < 0] = 0
+            zeros[zeros > time_range[-1]] = time_range[-1]
+            zeros = zeros.astype(int)
+
+            new_field.append(np.mean(field[ix][zeros], axis=0))
+
+        getattr(self, dst)[pos] = np.array(new_field)
+        return self
+
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:
         ```
@@ -801,7 +861,7 @@ class SeismicBatch(Batch):
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts_picking, s=s, scatter_color=scatter_color, 
+                     pts=pts_picking, s=s, scatter_color=scatter_color,
                      figsize=figsize, names=names, save_to=save_to,
                      dpi=dpi, line_color=line_color, title=title, **kwargs)
         return self
