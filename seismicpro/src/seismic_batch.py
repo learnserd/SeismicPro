@@ -1,9 +1,10 @@
-"""Seismic batch."""
+"""Seismic batch.""" # pylint: disable=too-many-lines
 import os
 from textwrap import dedent
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
+from scipy.optimize import minimize
 import pywt
 import segyio
 
@@ -11,7 +12,7 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
 from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
-                    time_statistics, spectral_statistics)
+                    time_statistics, spectral_statistics, time_dep)
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, show_statistics
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
@@ -726,6 +727,10 @@ class SeismicBatch(Batch):
         ----------
         speed : array or array of arrays
             Speed law for traces.
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
         num_mean_tr : int ,optional default 4
             Number of timestamps to meaning new amplitude value.
 
@@ -736,7 +741,7 @@ class SeismicBatch(Batch):
 
         Note
         ----
-        Works only with FieldIndex with CDP index.
+        Works properly only with FieldIndex with CDP index.
         """
         dst = src if dst is None else dst
         pos = self.get_pos(None, src, index)
@@ -770,6 +775,70 @@ class SeismicBatch(Batch):
             new_field.append(np.mean(field[ix][zeros], axis=0))
 
         getattr(self, dst)[pos] = np.array(new_field)
+        return self
+
+    @action
+    @inbatch_parallel(init='indices')
+    def find_optimal_params_to_csd(self, index, src, dst, fun, started_point, arr, method):
+        """Find optimal parameters to compensate spherical discrepancy.
+
+        Parameters
+        ----------
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        fun : callable
+            Function to minimize.
+        started_point : array of 2
+            Started values for $v_{pow}$ and $t_{pow}$.
+        arr : list or tuple
+            Arguments to minimized function.
+        method : str
+            Minimization method, see ```scipy.optimize.minimize```.
+
+        Returns
+        -------
+            : SeismicBatch
+            Batch of fields with compensated spherical deiscrepancy.
+        """
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        speed, time = arr
+        args = (field, *arr)
+        func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
+        pow_v, pow_t = func.x
+
+        correct_field = time_dep(field, time, speed, pow_v, pow_t)
+        getattr(self, dst)[pos] = correct_field
+        return self
+
+    @action
+    @inbatch_parallel(init='indices')
+    def compensate_sph_disc(self, index, src, dst, time, speed, pow_v, pow_t):
+        """Compensate spherical deiscrepancy by given parameters.
+
+        Parameters
+        ----------
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        time : array
+            Trace time values.
+        speed : array
+            Wave propagation speed depending on the depth.
+        t_pow : float or int
+            Time's power.
+        v_pow : float or int
+            Speed's power.
+        """
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        correct_field = time_dep(field, time, speed, pow_v, pow_t)
+        getattr(self, dst)[pos] = correct_field
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
