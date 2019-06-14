@@ -13,7 +13,8 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 from .seismic_index import SegyFilesIndex
 from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
                     time_statistics, spectral_statistics, time_dep)
-from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, show_statistics
+from .plot_utils import (IndexTracker, spectrum_plot, seismic_plot, show_statistics,
+                         gain_plot)
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
@@ -760,7 +761,7 @@ class SeismicBatch(Batch):
 
         for ix, off in enumerate(offset):
             time_x = calc_delta(t_zero, speed_conc, off)
-            shift = np.round(time_x*50).astype(int)
+            shift = np.round(time_x*20).astype(int)
             down_ix = time_range + shift
 
             left = -int(num_mean_tr/2) + (~num_mean_tr % 2)
@@ -784,9 +785,9 @@ class SeismicBatch(Batch):
 
         Parameters
         ----------
-        src : str, array-like
+        src : str
             The batch components to get the data from.
-        dst : str, array-like
+        dst : str
             The batch components to put the result in.
         fun : callable
             Function to minimize.
@@ -970,6 +971,27 @@ class SeismicBatch(Batch):
         rate = samples[1] - samples[0]
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
+        return self
+
+    def gain_plot(self, src, index, window=51, xbounds=None, ybounds=None):
+        """Plot gain difference of field.
+
+        Parameters
+        ----------
+        window : int, default 51
+            Size of smoothing window of the median filter.
+        xbounds : tuple or list with size 2
+            Bounds for plot's x-axis.
+        ybounds : tuple or list with size 2
+            Bounds for plot's y-axis.
+
+        Returns
+        -------
+        Gain's plot.
+        """
+        pos = self.get_pos(None, 'indices', index)
+        sample = getattr(self, src)[pos]
+        gain_plot(sample, window, xbounds, ybounds)
         return self
 
     def show_statistics(self, src, index, domain, tslice=None,
