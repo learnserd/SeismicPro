@@ -219,7 +219,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def gain_plot(sample, window, xbounds=None, ybounds=None):
+def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=None, **kwargs):
     """Draw difference of amplitude by time.
 
     Parameters
@@ -237,44 +237,48 @@ def gain_plot(sample, window, xbounds=None, ybounds=None):
     -------
     Gain's plot.
     """
-    if isinstance(sample, (tuple, list)):
-        sample = np.array(sample)
-    if len(sample.shape) == 1:
-        sample = sample.reshape(1, -1)
-    h_sample = []
-    for trace in sample:
-        hilb = hilbert(trace).real
-        env = (trace**2 + hilb**2)**.5
-        h_sample.append(env)
-    h_sample = np.array(h_sample)
-    mean_sample = np.mean(h_sample, axis=0)
-    max_val = np.max(mean_sample)
-    dt_val = (-1) * (max_val / mean_sample)
-    result = medfilt(dt_val, window)
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
 
-    if xbounds is None:
-        xbounds = (min(result)-min(result)*1.1, max(result)+min(result)*1.1)
-    elif not isinstance(xbounds, (list, tuple, np.ndarray)):
-        raise ValueError('xbounds should be list/tuple or numpy array with lenght 2'\
-                         +', not {}'.format(type(xbounds)))
-    elif len(xbounds) != 2:
-        raise ValueError('xbounds should has lenght 2 not {}'.format(len(xbounds)))
+    _, ax = plt.subplots(1, len(arrs), figsize=figsize)
+    ax = ax.reshape(-1)
+    for ix, sample in enumerate(arrs):
+        h_sample = []
+        for trace in sample:
+            hilb = hilbert(trace).real
+            env = (trace**2 + hilb**2)**.5
+            h_sample.append(env)
+        h_sample = np.array(h_sample)
+        mean_sample = np.mean(h_sample, axis=0)
+        max_val = np.max(mean_sample)
+        dt_val = (-1) * (max_val / mean_sample)
+        result = medfilt(dt_val, window)
+        ax[ix].plot(result, range(len(result)), **kwargs)
+        if names is not None:
+            ax[ix].set_title(names[ix])
 
-    if ybounds is None:
-        ybounds = (len(result)+100, -100)
-    elif not isinstance(ybounds, (list, tuple, np.ndarray)):
-        raise ValueError('ybounds should be list/tuple or numpy array with lenght 2'\
-                         +', not {}'.format(type(ybounds)))
-    elif len(ybounds) != 2:
-        raise ValueError('ybounds should has lenght 2 not {}'.format(len(ybounds)))
+        if xbounds is None:
+            set_xbounds = (min(result)-min(result)*1.1, max(result)+min(result)*1.1)
+        elif len(xbounds) != len(arrs):
+            raise ValueError('Incorrect format for xbounds.')
+        elif isinstance(xbounds[0], (int, float)):
+            set_xbounds = xbounds
+        else:
+            set_xbounds = xbounds[ix]
 
-    plt.figure(figsize=(10, 8))
-    plt.plot(result, range(len(result)))
-    plt.title('Amplitude gain')
-    plt.xlim(xbounds)
-    plt.ylim(ybounds)
-    plt.xlabel('Maxamp/Amp')
-    plt.ylabel('Time')
+        if ybounds is None:
+            set_ybounds = (len(result)+100, -100)
+        elif len(xbounds) != len(arrs):
+            raise ValueError('Incorrect format for ybounds.')
+        elif isinstance(xbounds[0], (int, float)):
+            set_xbounds = xbounds
+        else:
+            set_xbounds = xbounds[ix]
+
+        ax[ix].set_ylim(set_ybounds)
+        ax[ix].set_xlim(set_xbounds)
+        ax[ix].set_xlabel('Maxamp/Amp')
+        ax[ix].set_ylabel('Time')
     plt.show()
 
 def show_statistics(data, iline, xline, nrows=1, ncols=1,

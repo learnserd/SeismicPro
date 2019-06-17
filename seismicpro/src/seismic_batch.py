@@ -779,10 +779,10 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def find_optimal_params_to_csd(self, src, dst, fun=None, started_point=None, time=None, # pylint: disable=too-many-arguments
-                                   speed=None, pow_v=None, pow_t=None, method=None,
-                                   use_for_all=False, find_params=True):
-        """Find optimal parameters to compensate spherical discrepancy.
+    def correct_spherical_divergence(self, src, dst, fun=None, started_point=None, time=None, # pylint: disable=too-many-arguments
+                                     speed=None, v_pow=None, t_pow=None, method=None,
+                                     use_for_all=False, find_params=True):
+        """Find optimal parameters correct spherical divergence.
 
         Parameters
         ----------
@@ -814,7 +814,11 @@ class SeismicBatch(Batch):
         Returns
         -------
             : SeismicBatch
-            Batch of fields with compensated spherical deiscrepancy.
+            Batch of fields with corrected spherical divergence.
+
+        Note
+        ----
+        Works properly only with FieldIndex.
         """
         fields = getattr(self, src)
 
@@ -828,40 +832,40 @@ class SeismicBatch(Batch):
                 field = fields[0]
                 args = (field, time, speed)
                 func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
-                pow_v, pow_t = func.x
-                self._compensate_sph_dist(src=src, dst=dst, time=time, speed=speed, pow_v=pow_v, pow_t=pow_t)
+                v_pow, t_pow = func.x
+                self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
             else:
-                self._find_and_compensate_sd(src=src, dst=dst, fun=fun, started_point=started_point,
-                                             arr=(time, speed), method=method)
+                self._find_and_correct_sd(src=src, dst=dst, fun=fun, started_point=started_point,
+                                          arr=(time, speed), method=method)
         else:
-            if None in [pow_v, pow_t]:
+            if None in [v_pow, t_pow]:
                 raise ValueError("pow_t or pow_v can't be None if find_params is False ")
-            self._compensate_sph_dist(src=src, dst=dst, time=time, speed=speed, pow_v=pow_v, pow_t=pow_t)
+            self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
         return self
 
     @inbatch_parallel(init='_init_component')
-    def _compensate_sph_dist(self, index, src, dst, time, speed, pow_v, pow_t):
-        """Compensate spherical deiscrepancy with given parameters. """
+    def _correct_sph_div(self, index, src, dst, time, speed, v_pow, t_pow):
+        """Correct spherical divergence with given parameters. """
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        correct_field = time_dep(field, time, speed, pow_v, pow_t)
+        correct_field = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
 
         getattr(self, dst)[pos] = correct_field
         return self
 
     @inbatch_parallel(init='_init_component')
-    def _find_and_compensate_sd(self, index, src, dst, fun, started_point, arr, method):
-        """Find optimal parameters and compensate spherical deiscrepancy. """
+    def _find_and_correct_sd(self, index, src, dst, fun, started_point, arr, method):
+        """Find optimal parameters and correct spherical divergence. """
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
         time, speed = arr
         args = (field, *arr)
         func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
-        pow_v, pow_t = func.x
+        v_pow, t_pow = func.x
 
-        getattr(self, dst)[pos] = time_dep(field, time, speed, pow_v, pow_t)
+        getattr(self, dst)[pos] = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
