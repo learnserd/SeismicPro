@@ -751,7 +751,6 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
     df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
-
 def calc_v_rms(t, speed):
     r"""Calculate root mean square speed depend on time.
     Value calculated by following formula:
@@ -832,7 +831,7 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         new_field[:, ix] = timestamp * calc_sdc(t, speed, v_pow, t_pow)
     return new_field
 
-def calc_amp(parameters, field, speed, time):
+def calc_amp(parameters, field, time, speed):
     """Calculate the qualiry of found parameters.
     The qualiry caluclated as the median of the first order gradient module.
 
@@ -859,6 +858,7 @@ def calc_amp(parameters, field, speed, time):
         hilb = hilbert(trace).real
         env = (trace**2 + hilb**2)**.5
         h_sample.append(env)
+
     h_sample = np.array(h_sample)
     mean_sample = np.mean(h_sample, axis=0)
     max_val = np.max(mean_sample)

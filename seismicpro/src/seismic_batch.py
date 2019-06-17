@@ -779,8 +779,9 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    @inbatch_parallel(init='indices')
-    def find_optimal_params_to_csd(self, index, src, dst, fun, started_point, arr, method):
+    def find_optimal_params_to_csd(self, src, dst, fun=None, started_point=None, time=None, # pylint: disable=too-many-arguments
+                                   speed=None, pow_v=None, pow_t=None, method=None,
+                                   use_for_all=False, find_params=True):
         """Find optimal parameters to compensate spherical discrepancy.
 
         Parameters
@@ -789,57 +790,78 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        fun : callable
+        fun : callable, optional
             Function to minimize.
-        started_point : array of 2
+        started_point : array of 2, optional
             Started values for $v_{pow}$ and $t_{pow}$.
-        arr : list or tuple
-            Arguments to minimized function.
-        method : str
+        time : array, optional
+            Trace time values.
+        speed : array, optional
+            Wave propagation speed depending on the depth.
+        v_pow : float or int, optional
+            Speed's power.
+        t_pow : float or int, optional
+            Time's power.
+        method : str, optional
             Minimization method, see ```scipy.optimize.minimize```.
+        use_for_all : bool, default False
+            If true, optimal parameters for first element will be used for all batch,
+            else optimal parameters will find for each field separately.
+        find_params : bool, default True
+            If true, fields will be compensated with founeded parameres by scipy minimize
+            function, else will be used parameters from arguments.
 
         Returns
         -------
             : SeismicBatch
             Batch of fields with compensated spherical deiscrepancy.
         """
+        fields = getattr(self, src)
+
+        if not isinstance(time, int):
+            time = np.array(time, dtype=int)
+        if not isinstance(speed, int):
+            speed = np.array(speed, dtype=int)
+
+        if find_params:
+            if use_for_all:
+                field = fields[0]
+                args = (field, time, speed)
+                func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
+                pow_v, pow_t = func.x
+                self._compensate_sph_dist(src=src, dst=dst, time=time, speed=speed, pow_v=pow_v, pow_t=pow_t)
+            else:
+                self._find_and_compensate_sd(src=src, dst=dst, fun=fun, started_point=started_point,
+                                             arr=(time, speed), method=method)
+        else:
+            if None in [pow_v, pow_t]:
+                raise ValueError("pow_t or pow_v can't be None if find_params is False ")
+            self._compensate_sph_dist(src=src, dst=dst, time=time, speed=speed, pow_v=pow_v, pow_t=pow_t)
+        return self
+
+    @inbatch_parallel(init='_init_component')
+    def _compensate_sph_dist(self, index, src, dst, time, speed, pow_v, pow_t):
+        """Compensate spherical deiscrepancy with given parameters. """
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        speed, time = arr
+        correct_field = time_dep(field, time, speed, pow_v, pow_t)
+
+        getattr(self, dst)[pos] = correct_field
+        return self
+
+    @inbatch_parallel(init='_init_component')
+    def _find_and_compensate_sd(self, index, src, dst, fun, started_point, arr, method):
+        """Find optimal parameters and compensate spherical deiscrepancy. """
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        time, speed = arr
         args = (field, *arr)
         func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
         pow_v, pow_t = func.x
 
-        correct_field = time_dep(field, time, speed, pow_v, pow_t)
-        getattr(self, dst)[pos] = correct_field
-        return self
-
-    @action
-    @inbatch_parallel(init='indices')
-    def compensate_sph_disc(self, index, src, dst, time, speed, pow_v, pow_t):
-        """Compensate spherical deiscrepancy by given parameters.
-
-        Parameters
-        ----------
-        src : str, array-like
-            The batch components to get the data from.
-        dst : str, array-like
-            The batch components to put the result in.
-        time : array
-            Trace time values.
-        speed : array
-            Wave propagation speed depending on the depth.
-        t_pow : float or int
-            Time's power.
-        v_pow : float or int
-            Speed's power.
-        """
-        pos = self.get_pos(None, src, index)
-        field = getattr(self, src)[pos]
-
-        correct_field = time_dep(field, time, speed, pow_v, pow_t)
-        getattr(self, dst)[pos] = correct_field
+        getattr(self, dst)[pos] = time_dep(field, time, speed, pow_v, pow_t)
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
