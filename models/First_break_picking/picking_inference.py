@@ -2,14 +2,13 @@
 predicts picking for traces and dump them to csv file.
 """
 import sys
-
 import argparse
 
 sys.path.append('../..')
 
-from seismicpro.batchflow import Pipeline, Dataset, B, V, F
+from seismicpro.batchflow import Dataset, B
 from seismicpro.batchflow.models.torch import UNet
-from seismicpro.src import SeismicBatch, FieldIndex, TraceIndex, seismic_plot, CustomIndex
+from seismicpro.src import FieldIndex, TraceIndex
 from picking_batch import PickingBatch
 
 def make_prediction():
@@ -20,10 +19,9 @@ def make_prediction():
                         required=True)
     parser.add_argument('-m', '--path_model', type=str, help="Path to saved model.",
                         required=True)
-    parser.add_argument('-d', '--path_dump', type=str, help="Path to csv file where the results are stored.",
-                        required=True)
+    parser.add_argument('-d', '--path_dump', type=str, help="Path to csv file where \
+                        the results are stored.", required=True)
     args = parser.parse_args()
-    
     path_raw = args.path_raw
     model = args.path_model
     save_to = args.path_dump
@@ -51,17 +49,19 @@ def predict(path_raw, path_model, path_save_to):
     }
 
     test_pipeline = (data.p
-                        .init_model('dynamic', UNet, 'my_model', config=config_predict) 
-                        .load(components='raw', fmt='segy')
-                        .drop_zero_traces(num_zero=700, src='raw')
-                        .normalize_traces(src='raw', dst='raw')
-                        .add_components(components='unet_predictions')
-                        .predict_model('my_model', B('raw'), fetches=['predictions'],
-                                        save_to=[B('unet_predictions')], mode='a')
-                        .mask_to_pick(src='unet_predictions', dst='unet_predictions', labels=False)
-                        .dump(src='unet_predictions', fmt='picks', path=path_save_to, traces='raw', to_samples=True))
+                     .init_model('dynamic', UNet, 'my_model', config=config_predict)
+                     .load(components='raw', fmt='segy')
+                     .drop_zero_traces(num_zero=700, src='raw')
+                     .normalize_traces(src='raw', dst='raw')
+                     .add_components(components='unet_predictions')
+                     .predict_model('my_model', B('raw'), fetches=['predictions'],
+                                    save_to=[B('unet_predictions')], mode='a')
+                     .mask_to_pick(src='unet_predictions', dst='unet_predictions', labels=False)
+                     .dump(src='unet_predictions', fmt='picks', path=path_save_to,
+                           traces='raw', to_samples=True))
 
     test_pipeline.run(1000, n_epochs=1, drop_last=False, shuffle=False, bar=True)
 
 if __name__ == "__main__":
     sys.exit(make_prediction())
+    

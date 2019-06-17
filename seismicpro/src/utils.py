@@ -7,9 +7,26 @@ import segyio
 
 from . import seismic_index as si
 from ..batchflow import FilesIndex
+from ..batchflow.models.metrics import Metrics
 
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
+
+class PickingMetrics(Metrics):
+    """Class for First Break picking task metrics.
+    """
+    def __init__(self, targets, predictions, gap=3):
+        super().__init__()
+        self.targets = targets
+        self.predictions = predictions
+        self.gap = gap
+
+    def mae(self):
+        return np.mean(np.abs(self.targets - self.predictions))
+
+    def accuracy(self):
+        abs_diff = np.abs(self.targets - self.predictions)
+        return 100 * len(abs_diff[abs_diff < self.gap]) / len(abs_diff)
 
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
@@ -750,3 +767,42 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
     df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
+
+def massive_block(data):
+    """ Function that takes 2d array and returns the indices of the
+    beginning of the longest block of ones in each row.
+
+    Parameters
+    ----------
+    src : str
+        The batch components to get the data from.
+    dst : str
+        The batch components to put the result in.
+
+    Returns
+    -------
+    batch : SeismicBatch
+        Batch with the predicted picking by MCM method.
+    """
+    arr = np.append(data, np.zeros((data.shape[0], 1)), axis=1)
+    arr = np.insert(arr, 0, 0, axis=1)
+
+    plus_one = np.argwhere((np.diff(arr)) == 1)
+    minus_one = np.argwhere((np.diff(arr)) == -1)
+
+    d = minus_one[:, 1] - plus_one[:, 1]
+    mask = minus_one[:, 0]
+
+    sort = np.lexsort((d, mask))
+    ind = [0] * mask[0]
+    for i in range(len(sort[:-1])):
+        diff = mask[i +1] - mask[i]
+        if diff > 1:
+            ind.append(plus_one[:, 1][sort[i]])
+            ind.extend([0] * (diff - 1))
+        elif diff == 1:
+            ind.append(plus_one[:, 1][sort[i]])
+    ind.append(plus_one[:, 1][sort[-1]])
+    ind.extend([0] * (arr.shape[0] - mask[-1] - 1))
+    ind = [[i] for i in ind]
+    return ind

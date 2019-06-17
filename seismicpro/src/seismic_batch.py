@@ -11,7 +11,7 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex
 from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
-                    time_statistics, spectral_statistics)
+                    time_statistics, spectral_statistics, massive_block)
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, show_statistics
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
@@ -882,4 +882,146 @@ class SeismicBatch(Batch):
         titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
         show_statistics(vals, iline=iline, xline=xline, nrows=2, ncols=2,
                         figsize=figsize, titles=titles, **kwargs)
+        return self
+
+    @action
+    def normalize_traces(self, src, dst):
+        """Normalize traces to zero mean and unit variance.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the normalized traces.
+        """
+        data = getattr(self, src)
+        data = np.vstack(data)
+        dst_data = (data - np.mean(data, axis=1)[:, np.newaxis]) / \
+                    np.std(data, axis=1)[:, np.newaxis]
+        dst_data = dst_data[:, np.newaxis, :]
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def picking_to_mask(self, src, dst):
+        """Convert picking time to the mask.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the mask corresponds to the picking.
+        """
+        data = np.concatenate(np.vstack(getattr(self, src)))
+
+        samples = self.meta['raw']['samples']
+        tick = samples[1] - samples[0]
+        data = np.around(data / tick).astype('int')
+        batch_size = data.shape[0]
+        trace_length = self.raw[0].shape[1]
+        ind = tuple(np.array(list(zip(range(batch_size), data))).T)
+        ind[1][ind[1] < 0] = 0
+        mask = np.zeros((batch_size, trace_length))
+        mask[ind] = 1
+        setattr(self, dst, np.cumsum(mask, axis=1))
+        return self
+
+    @action
+    def mask_to_pick(self, src, dst, labels=True):
+        """Convert the mask to picking time. Piciking time corresponds to the
+        begininning of the longest block of consecutive ones in the mask.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        labels: bool, default: False
+            The flag indicates whether action's inputs probabilities or labels.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking times.
+        """
+        data = getattr(self, src)
+        if not labels:
+            data = np.argmax(data, axis=1)
+
+        picking = massive_block(data)
+        setattr(self, dst, picking)
+        return self
+
+    @action
+    def mcm(self, src, dst, eps=3, l=12):
+        """Creates for each trace corresponding Energy function.
+        Based on Coppens(1985) method.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        eps: float, default: 3
+            Stabilization constant that helps reduce the rapid fluctuations of energy function.
+        l: int, default: 12
+            The leading window length.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the energy function.
+        """
+        trace = np.concatenate(getattr(self, src))
+        energy = np.cumsum(trace**2, axis=1)
+        long_win, lead_win = energy, energy
+        lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
+        er = lead_win / (long_win + eps)
+        self.add_components(dst, init=er)
+        return self
+
+    @action
+    def energy_to_picking(self, src, dst):
+        """Convert energy function of the trace to the picking time by taking derivative
+        and finding maximum.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking by MCM method.
+        """
+        er = getattr(self, src)
+        er = np.gradient(er, axis=1)
+        picking = np.argmax(er, axis=1)
+        self.add_components(dst, init=picking)
+        return self
+
+    @action
+    def preprocess_component(self, src, dst):
+        """Prepeare data for loading into torch models.
+        """
+        data = getattr(self, src)
+        data_dst = np.stack(data)
+        setattr(self, dst, data_dst)
         return self
