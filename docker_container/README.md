@@ -1,17 +1,17 @@
-# Docker container with python 3 environment without GPU support for First break picking model inference
+## Docker container with python 3 environment without GPU support for First break picking model inference
 
 
-# Docker
+## Docker
 To install Docker execute `utils/install_docker.sh`.
 
 
-# Inference Image
+## Inference Image
 To build the image for inference execute the following command from the parent docker_container directory
 
 `docker build -t image_name -f docker_container/Dockerfile .`
 
 
-# How to run inference script
+## How to run inference script
 In order to run the container with inference script you need to specify some variables, see details bellow.
 
 
@@ -38,4 +38,4 @@ Docker image to run in the container. Specify the `image_name` you assigned to t
 
 ## Examples
 
-`SEGY=segy_name.sgy MODEL=model_name.dill IMAGE=picking_inference ./run.sh` - to run the script on the **docker_container/data/segy_name.sgy** file using the **docker_container/data/model_name.dill** model. Result will be stored in **docker_container/data/picking.csv**
+`DATA_DIR=/home/user/../ SEGY_dataSEGY=segy_name.sgy MODEL=model_name.dill IMAGE=picking_inference ./run.sh` - to run the script on the **docker_container/data/segy_name.sgy** file using the **docker_container/data/model_name.dill** model. Result will be stored in **docker_container/data/picking.csv**
