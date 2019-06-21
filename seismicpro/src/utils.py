@@ -774,22 +774,23 @@ def massive_block(data):
 
     Parameters
     ----------
-    src : str
-        The batch components to get the data from.
-    dst : str
-        The batch components to put the result in.
+    data : np.array
+        Array with masks.
 
     Returns
     -------
-    batch : SeismicBatch
-        Batch with the predicted picking by MCM method.
+    ind : list
+        Indices of the beginning of the longest blocks for each row.
     """
     arr = np.append(data, np.zeros((data.shape[0], 1)), axis=1)
     arr = np.insert(arr, 0, 0, axis=1)
 
     plus_one = np.argwhere((np.diff(arr)) == 1)
     minus_one = np.argwhere((np.diff(arr)) == -1)
-
+    
+    if len(plus_one) == 0:
+        return [[0]] * data.shape[0]
+            
     d = minus_one[:, 1] - plus_one[:, 1]
     mask = minus_one[:, 0]
 
