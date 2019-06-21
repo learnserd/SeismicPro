@@ -21,13 +21,16 @@ def make_prediction():
                         required=True)
     parser.add_argument('-d', '--path_dump', type=str, help="Path to csv file where \
                         the results are stored.", required=True)
+    parser.add_argument('-n', '--num_zero', type=int, help="Required number of zeros \
+                        for the trace to contain to drop such trace.", default=100)
     args = parser.parse_args()
     path_raw = args.path_raw
     model = args.path_model
     save_to = args.path_dump
-    predict(path_raw, model, save_to)
+    num_zero = args.num_zero
+    predict(path_raw, model, num_zero, save_to)
 
-def predict(path_raw, path_model, path_save_to):
+def predict(path_raw, path_model, num_zero, path_save_to):
     """Make predictions and dump results using loaded model and path to data.
 
     Parameters
@@ -51,7 +54,7 @@ def predict(path_raw, path_model, path_save_to):
     test_pipeline = (data.p
                      .init_model('dynamic', UNet, 'my_model', config=config_predict)
                      .load(components='raw', fmt='segy')
-                     .drop_zero_traces(num_zero=700, src='raw')
+                     .drop_zero_traces(num_zero=num_zero, src='raw')
                      .normalize_traces(src='raw', dst='raw')
                      .add_components(components='unet_predictions')
                      .predict_model('my_model', B('raw'), fetches=['predictions'],

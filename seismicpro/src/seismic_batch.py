@@ -687,7 +687,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="indices", post='_post_filter_by_mask', target="threads")
     @apply_to_each_component
-    def drop_zero_traces(self, index, num_zero, src, **kwargs):
+    def drop_zero_traces(self, index, src, num_zero, **kwargs):
         """Drop traces with sequence of zeros longer than ```num_zero```.
 
         Parameters
@@ -901,15 +901,13 @@ class SeismicBatch(Batch):
             Batch with the normalized traces.
         """
         data = getattr(self, src)
-        data = np.vstack(data)
-        dst_data = (data - np.mean(data, axis=1)[:, np.newaxis]) / \
-                    np.std(data, axis=1)[:, np.newaxis]
-        dst_data = dst_data[:, np.newaxis, :]
+        data = np.stack(data)
+        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / np.std(data, axis=2, keepdims=True)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
-    def picking_to_mask(self, src, dst):
+    def picking_to_mask(self, src, dst, src_traces='raw'):
         """Convert picking time to the mask.
 
         Parameters
@@ -918,15 +916,16 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-
+        src_traces : str
+            The batch components which contains traces.
+            
         Returns
         -------
         batch : SeismicBatch
             Batch with the mask corresponds to the picking.
         """
         data = np.concatenate(np.vstack(getattr(self, src)))
-
-        samples = self.meta['raw']['samples']
+        samples = self.meta[src_traces]['samples']
         tick = samples[1] - samples[0]
         data = np.around(data / tick).astype('int')
         batch_size = data.shape[0]
@@ -935,7 +934,8 @@ class SeismicBatch(Batch):
         ind[1][ind[1] < 0] = 0
         mask = np.zeros((batch_size, trace_length))
         mask[ind] = 1
-        setattr(self, dst, np.cumsum(mask, axis=1))
+        dst_data = np.cumsum(mask, axis=1)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
@@ -961,8 +961,8 @@ class SeismicBatch(Batch):
         if not labels:
             data = np.argmax(data, axis=1)
 
-        picking = massive_block(data)
-        setattr(self, dst, picking)
+        dst_data = massive_block(data)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
@@ -991,7 +991,7 @@ class SeismicBatch(Batch):
         long_win, lead_win = energy, energy
         lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
         er = lead_win / (long_win + eps)
-        self.add_components(dst, init=er)
+        self.add_components(dst, init=array([i for i in er] + [None])[:-1])
         return self
 
     @action
@@ -1011,14 +1011,15 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the predicted picking by MCM method.
         """
-        er = getattr(self, src)
+        er = np.stack(getattr(self, src))
         er = np.gradient(er, axis=1)
         picking = np.argmax(er, axis=1)
-        self.add_components(dst, init=picking)
+        self.add_components(dst, array([i for i in picking] + [None])[:-1])
         return self
 
     @action
-    def preprocess_component(self, src, dst):
+    @apply_to_each_component
+    def preprocess_torch_input(self, src, dst):
         """Prepeare data for loading into torch models.
         """
         data = getattr(self, src)
