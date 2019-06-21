@@ -829,8 +829,9 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
     new_field = np.zeros_like(field)
     for ix, t in enumerate(time):
         timestamp = field[:, ix]
-        new_field[:, ix] = timestamp * calc_sdc(t, speed, v_pow=v_pow,
-                                                t_pow=t_pow)
+        correction_coef = (calc_sdc(t, speed, v_pow=v_pow, t_pow=t_pow)
+                           / calc_sdc(np.max(time), speed, v_pow=v_pow, t_pow=t_pow))
+        new_field[:, ix] = timestamp * correction_coef
     return new_field
 
 def calculate_sdc_quality(parameters, field, time, speed):

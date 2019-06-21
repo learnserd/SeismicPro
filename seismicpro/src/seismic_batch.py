@@ -715,7 +715,7 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init='_init_component')
-    def field_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4):
+    def field_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4, sample_time=None):
         r""" Straightening up the travel time curve with normal grading. Shift for each
         time value calculated by following way:
 
@@ -734,6 +734,8 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         num_mean_tr : int ,optional default 4
             Number of timestamps to meaning new amplitude value.
+        sample_time : int, float, optional
+            Difference between real time and samples. Note that ```sample_time``` is measured in milliseconds.
 
         Returns
         -------
@@ -748,20 +750,25 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        offset = np.array(self.index.get_df(index=index)['offset'])
+        offset = np.array(sorted(np.array(self.index.get_df(index=index)['offset'])))
         speed_conc = np.array(speed[:field.shape[1]])
+
+        if 'samples' in self.meta[src].keys():
+            sample_time = np.diff(self.meta[src]['samples'][:2])[0]
+        elif sample_time is None:
+            raise ValueError('Sample time should be specified or by self.meta[src] or by sample_time.')
+
         if len(speed_conc) != field.shape[1]:
             raise ValueError('Speed must have shape equal to trace lenght, not {} but {}'.format(speed_conc.shape[0],
                                                                                                  field.shape[1]))
-        t_zero = (np.arange(1, field.shape[1]+1)*2)/1000
+        t_zero = (np.arange(1, field.shape[1]+1)*sample_time)/1000
         time_range = np.arange(0, field.shape[1])
         new_field = []
-
         calc_delta = lambda t_z, spd, ofst: t_z*((1 + (ofst/(spd*t_z+1e-6))**2)**.5 - 1)
 
         for ix, off in enumerate(offset):
             time_x = calc_delta(t_zero, speed_conc, off)
-            shift = np.round(time_x*20).astype(int)
+            shift = np.round((time_x*1000)/sample_time).astype(int)
             down_ix = time_range + shift
 
             left = -int(num_mean_tr/2) + (~num_mean_tr % 2)
@@ -781,8 +788,8 @@ class SeismicBatch(Batch):
     @action
     def correct_spherical_divergence(self, src, dst, fun=None, started_point=None, time=None, # pylint: disable=too-many-arguments
                                      speed=None, v_pow=None, t_pow=None, method=None,
-                                     use_for_all=False, find_params=True):
-        """Find optimal parameters correct spherical divergence.
+                                     use_for_all=False, find_params=True, params_comp=None):
+        """Correction of spherical divergence with given parameers or with optimal parameters.
 
         Parameters
         ----------
@@ -810,6 +817,8 @@ class SeismicBatch(Batch):
         find_params : bool, default True
             If true, fields will be compensated with founeded parameres by scipy minimize
             function, else will be used parameters from arguments.
+        params_comp : None of str, default None
+            If str, parameters will be saved in a component with name ```params_comp```.
 
         Returns
         -------
@@ -831,12 +840,16 @@ class SeismicBatch(Batch):
             if use_for_all:
                 field = fields[0]
                 args = (field, time, speed)
+
                 func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
                 v_pow, t_pow = func.x
+
+                if params_comp is not None:
+                    setattr(self, params_comp, np.array([v_pow, t_pow]))
                 self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
             else:
                 self._find_and_correct_sd(src=src, dst=dst, fun=fun, started_point=started_point,
-                                          arr=(time, speed), method=method)
+                                          arr=(time, speed), method=method, params_comp=params_comp)
         else:
             if None in [v_pow, t_pow]:
                 raise ValueError("pow_t or pow_v can't be None if find_params is False ")
@@ -855,7 +868,7 @@ class SeismicBatch(Batch):
         return self
 
     @inbatch_parallel(init='_init_component')
-    def _find_and_correct_sd(self, index, src, dst, fun, started_point, arr, method):
+    def _find_and_correct_sd(self, index, src, dst, fun, started_point, arr, method, params_comp):
         """Find optimal parameters and correct spherical divergence. """
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
@@ -864,7 +877,10 @@ class SeismicBatch(Batch):
         args = (field, *arr)
         func = minimize(fun, started_point, args=args, method=method, bounds=((0, 5), (0, 5)))
         v_pow, t_pow = func.x
-
+        if params_comp is not None:
+            if getattr(self, params_comp) is None:
+                raise ValueError('```params_comp``` should be an array but got None')
+            getattr(self, params_comp)[pos] = np.array([v_pow, t_pow])
         getattr(self, dst)[pos] = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
         return self
 

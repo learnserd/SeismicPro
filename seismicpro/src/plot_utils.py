@@ -219,7 +219,7 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=None, **kwargs):
+def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
     """Draw difference of amplitude by time.
 
     Parameters
@@ -241,7 +241,10 @@ def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=N
         arrs = (arrs,)
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize)
-    ax = ax.reshape(-1)
+    if isinstance(ax, (list, tuple, np.ndarray)):
+        ax = ax.reshape(-1)
+    else:
+        ax = [ax]
     for ix, sample in enumerate(arrs):
         h_sample = []
         for trace in sample:
@@ -259,21 +262,21 @@ def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=N
 
         if xbounds is None:
             set_xbounds = (min(result)-min(result)*1.1, max(result)+min(result)*1.1)
-        elif len(xbounds) != len(arrs):
-            raise ValueError('Incorrect format for xbounds.')
         elif isinstance(xbounds[0], (int, float)):
             set_xbounds = xbounds
+        elif len(xbounds) != len(arrs):
+            raise ValueError('Incorrect format for xbounds.')
         else:
             set_xbounds = xbounds[ix]
 
         if ybounds is None:
             set_ybounds = (len(result)+100, -100)
-        elif len(xbounds) != len(arrs):
+        elif isinstance(ybounds[0], (int, float)):
+            set_ybounds = ybounds
+        elif len(ybounds) != len(arrs):
             raise ValueError('Incorrect format for ybounds.')
-        elif isinstance(xbounds[0], (int, float)):
-            set_xbounds = xbounds
         else:
-            set_xbounds = xbounds[ix]
+            set_ybounds = ybounds[ix]
 
         ax[ix].set_ylim(set_ybounds)
         ax[ix].set_xlim(set_xbounds)
