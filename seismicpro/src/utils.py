@@ -834,7 +834,7 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         new_field[:, ix] = timestamp * correction_coef
     return new_field
 
-def calculate_sdc_quality(parameters, field, time, speed):
+def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """Calculate the quality of found parameters.
     The qualiry caluclated as the median of the first order gradient module.
 
@@ -848,6 +848,8 @@ def calculate_sdc_quality(parameters, field, time, speed):
         Trace time values.
     speed : array
         Wave propagation speed depending on the depth.
+    window : int, default 51
+        Size of smoothing window of the median filter.
 
     Returns
     -------
@@ -867,5 +869,5 @@ def calculate_sdc_quality(parameters, field, time, speed):
     mean_sample = np.mean(h_sample, axis=0)
     max_val = np.max(mean_sample)
     dt_val = (-1) * (max_val / mean_sample)
-    result = medfilt(dt_val, 51)
+    result = medfilt(dt_val, window)
     return np.median(np.abs(np.gradient(result)))

@@ -219,8 +219,14 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
-    """Draw difference of amplitude by time.
+def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
+    r"""Gain's graph plots the ratio of the maximum mean value of
+    the amplitude to the mean value of the amplitude at the moment t.
+
+    First of all the mean amplitude (Am) values for each timestemp (t).
+    After it the resulted value calculated as following:
+
+        $$ G(t) = - \frac{\max{(Am)}}{Am(t)} $$
 
     Parameters
     ----------
@@ -228,10 +234,14 @@ def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=N
         Seismogram.
     window : int, default 51
         Size of smoothing window of the median filter.
-    xbounds : tuple or list with size 2
+    xlim : tuple or list with size 2
         Bounds for plot's x-axis.
-    ybounds : tuple or list with size 2
+    ylim : tuple or list with size 2
         Bounds for plot's y-axis.
+    figsize : array-like, optional
+        Output plot size.
+    names : str or array-like, optional
+        Title names to identify subplots.
 
     Returns
     -------
@@ -241,7 +251,7 @@ def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=N
         arrs = (arrs,)
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize)
-    if isinstance(ax, (list, tuple, np.ndarray)):
+    if isinstance(ax, np.ndarray):
         ax = ax.reshape(-1)
     else:
         ax = [ax]
@@ -260,26 +270,26 @@ def gain_plot(arrs, window=51, xbounds=None, ybounds=None, figsize=None, names=N
         if names is not None:
             ax[ix].set_title(names[ix])
 
-        if xbounds is None:
-            set_xbounds = (min(result)-min(result)*1.1, max(result)+min(result)*1.1)
-        elif isinstance(xbounds[0], (int, float)):
-            set_xbounds = xbounds
-        elif len(xbounds) != len(arrs):
+        if xlim is None:
+            set_xlim = (max(result)-min(result)*1.1, max(result)+min(result)*1.1)
+        elif isinstance(xlim[0], (int, float)):
+            set_xlim = xlim
+        elif len(xlim) != len(arrs):
             raise ValueError('Incorrect format for xbounds.')
         else:
-            set_xbounds = xbounds[ix]
+            set_xlim = xlim[ix]
 
-        if ybounds is None:
-            set_ybounds = (len(result)+100, -100)
-        elif isinstance(ybounds[0], (int, float)):
-            set_ybounds = ybounds
-        elif len(ybounds) != len(arrs):
+        if ylim is None:
+            set_ylim = (len(result)+100, -100)
+        elif isinstance(ylim[0], (int, float)):
+            set_ylim = ylim
+        elif len(ylim) != len(arrs):
             raise ValueError('Incorrect format for ybounds.')
         else:
-            set_ybounds = ybounds[ix]
+            set_ylim = ylim[ix]
 
-        ax[ix].set_ylim(set_ybounds)
-        ax[ix].set_xlim(set_xbounds)
+        ax[ix].set_ylim(set_ylim)
+        ax[ix].set_xlim(set_xlim)
         ax[ix].set_xlabel('Maxamp/Amp')
         ax[ix].set_ylabel('Time')
     plt.show()
