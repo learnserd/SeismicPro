@@ -902,7 +902,7 @@ class SeismicBatch(Batch):
         """
         data = getattr(self, src)
         data = np.stack(data)
-        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / np.std(data, axis=2, keepdims=True)
+        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / (np.std(data, axis=2, keepdims=True) + 10 ** -6)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
@@ -991,7 +991,7 @@ class SeismicBatch(Batch):
         long_win, lead_win = energy, energy
         lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
         er = lead_win / (long_win + eps)
-        self.add_components(dst, init=array([i for i in er] + [None])[:-1])
+        self.add_components(dst, init=np.array([i for i in er] + [None])[:-1])
         return self
 
     @action
@@ -1014,15 +1014,36 @@ class SeismicBatch(Batch):
         er = np.stack(getattr(self, src))
         er = np.gradient(er, axis=1)
         picking = np.argmax(er, axis=1)
-        self.add_components(dst, array([i for i in picking] + [None])[:-1])
+        self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
         return self
-
+    
     @action
     @apply_to_each_component
-    def preprocess_torch_input(self, src, dst):
-        """Prepeare data for loading into torch models.
+    def preprocess_model_inputs(self, src, dst, dtype=np.float32, model_type='1d'):
+        """Prepeare data for loading  torch models.
+        
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        dtype: str or np.dtype, default: np.float
+            The type array will be casted to
+        model: str, default: '1d'
+            The type of the model. In case of '1.5d' takes only 5th mask.
+            
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the modified components.
         """
         data = getattr(self, src)
-        data_dst = np.stack(data)
+        data_dst = np.stack(data).astype(dtype)
+        
+        if model_type == '1.5d':
+            data_dst = data_dst[::5, :]
+            
         setattr(self, dst, data_dst)
         return self
+    
