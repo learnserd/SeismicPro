@@ -3,6 +3,7 @@ import functools
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from tqdm import tqdm
 import segyio
 
 from . import seismic_index as si
@@ -126,13 +127,15 @@ def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
         for i, x in enumerate(file.header[:]):
             x.update(meta[i])
 
-def merge_segy_files(output_path, **kwargs):
+def merge_segy_files(output_path, bar=True, **kwargs):
     """Merge segy files into a single segy file.
 
     Parameters
     ----------
     output_path : str
         Path to output file.
+    bar : bool, deafult to True
+        Whether to how progress bar.
     kwargs : dict
         Keyword arguments to index input segy files.
 
@@ -149,15 +152,16 @@ def merge_segy_files(output_path, **kwargs):
 
     with segyio.create(output_path, spec) as dst:
         i = 0
-        for index in segy_index.indices:
+        iterable = tqdm(segy_index.indices) if bar else segy_index.indices 
+        for index in iterable:
             with segyio.open(index, strict=False) as src:
                 dst.trace[i: i + src.tracecount] = src.trace
                 dst.header[i: i + src.tracecount] = src.header
+                for j in range(src.tracecount):
+                    dst.header[i + j].update({segyio.TraceField.TRACE_SEQUENCE_FILE: i + j + 1})
 
             i += src.tracecount
 
-        for j, h in enumerate(dst.header):
-            h.update({segyio.TraceField.TRACE_SEQUENCE_FILE: j + 1})
 
 def merge_picking_files(output_path, **kwargs):
     """Merge picking files into a single file.

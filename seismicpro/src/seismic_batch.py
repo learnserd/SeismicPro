@@ -207,12 +207,13 @@ class SeismicBatch(Batch):
             new_idf = self.index.get_df(index=mask.ravel(), reset=False)
             new_index = new_idf.index.unique()
             batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
-
+            
             batch = type(self)(batch_index)
+            batch.add_components(self.components)
             for comp in self.components:
                 setattr(batch, comp, np.array([None] * len(batch.index)))
-            batch.add_components(self.components)
-
+        
+            batch.meta = self.meta
             for i, index in enumerate(new_index):
                 for isrc in batch.components:
                     pos = self.get_pos(None, isrc, index)
@@ -832,7 +833,7 @@ class SeismicBatch(Batch):
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         samples = self.meta[src[0]]['samples']
-        rate = samples[1] - samples[0]
+        rate = (samples[1] - samples[0]) / 1000.
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
         return self
