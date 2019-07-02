@@ -1030,7 +1030,8 @@ class SeismicBatch(Batch):
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
         return self
 
-    def gain_plot(self, src, index, window=51, xbounds=None, ybounds=None):
+    def gain_plot(self, src, index, window=51, xlim=None, ylim=None,
+                  figsize=None, names=None, **kwargs):
         """Gain's graph plots the ratio of the maximum mean value of
         the amplitude to the mean value of the amplitude at the moment t.
 
@@ -1038,18 +1039,25 @@ class SeismicBatch(Batch):
         ----------
         window : int, default 51
             Size of smoothing window of the median filter.
-        xbounds : tuple or list with size 2
+        xlim : tuple or list with size 2
             Bounds for plot's x-axis.
-        ybounds : tuple or list with size 2
+        ylim : tuple or list with size 2
             Bounds for plot's y-axis.
+        figsize : array-like, optional
+            Output plot size.
+        names : str or array-like, optional
+            Title names to identify subplots.
 
         Returns
         -------
         Gain's plot.
         """
+        _ = kwargs
         pos = self.get_pos(None, 'indices', index)
-        sample = getattr(self, src)[pos]
-        gain_plot(sample, window, xbounds, ybounds)
+        if isinstance(src, str):
+            sample = tuple(sample, )
+        sample = [getattr(self, source)[pos] for source in src]
+        gain_plot(sample, window, xlim, ylim, figsize, names, **kwargs)
         return self
 
     def show_statistics(self, src, index, domain, tslice=None,
