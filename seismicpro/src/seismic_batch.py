@@ -15,6 +15,7 @@ from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
                     time_statistics, spectral_statistics, time_dep)
 from .plot_utils import (IndexTracker, spectrum_plot, seismic_plot, show_statistics,
                          gain_plot)
+from .seismic_index import FieldIndex
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
@@ -744,7 +745,12 @@ class SeismicBatch(Batch):
 
         Note
         ----
-        Works properly only with FieldIndex with CDP index.
+        1. Works only with sorted traces by offset.
+        2. Works properly only with FieldIndex with CDP index.
+
+        Raises
+        ------
+        ValueError : Raise if traces is not sorted by offset.
         """
         dst = src if dst is None else dst
         pos = self.get_pos(None, src, index)
@@ -753,6 +759,8 @@ class SeismicBatch(Batch):
         offset = np.sort(self.index.get_df(index=index)['offset'])
         speed_conc = np.array(speed[:field.shape[1]])
 
+        if self.meta[src]['sorting'] != 'offset':
+            raise ValueError('All traces should be sorted by offset not {}'.format(self.meta[src]['sorting']))
         if 'samples' in self.meta[src].keys():
             sample_time = np.diff(self.meta[src]['samples'][:2])[0]
         elif sample_time is None:
@@ -772,15 +780,13 @@ class SeismicBatch(Batch):
             down_ix = time_range + shift
 
             left = -int(num_mean_tr/2) + (~num_mean_tr % 2)
-            right = int(num_mean_tr/2) + 1
-            mean_traces = np.array([i for i in range(left, right)]).reshape(-1, 1)
+            right = left + num_mean_tr
+            mean_traces = np.arange(left, right).reshape(-1, 1)
 
-            zeros = np.zeros((num_mean_tr, *down_ix.shape)) + [down_ix]*num_mean_tr + mean_traces
-            zeros[zeros < 0] = 0
-            zeros[zeros > time_range[-1]] = time_range[-1]
-            zeros = zeros.astype(int)
+            ix_to_mean = np.zeros((num_mean_tr, *down_ix.shape)) + [down_ix]*num_mean_tr + mean_traces
+            ix_to_mean = np.clip(ix_to_mean, 0, time_range[-1]).astype(int)
 
-            new_field.append(np.mean(field[ix][zeros], axis=0))
+            new_field.append(np.mean(field[ix][ix_to_mean], axis=0))
 
         getattr(self, dst)[pos] = np.array(new_field)
         return self
@@ -830,10 +836,16 @@ class SeismicBatch(Batch):
         Note
         ----
         Works properly only with FieldIndex.
+
+        Raises
+        ------
+        ValueError : If Index is not FieldIndex.
         """
         fields = getattr(self, src)
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
 
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
         if not isinstance(time, int):
             time = np.array(time, dtype=int)
         if not isinstance(speed, int):
@@ -1019,7 +1031,8 @@ class SeismicBatch(Batch):
         return self
 
     def gain_plot(self, src, index, window=51, xbounds=None, ybounds=None):
-        """Plot gain difference of field.
+        """Gain's graph plots the ratio of the maximum mean value of
+        the amplitude to the mean value of the amplitude at the moment t.
 
         Parameters
         ----------
