@@ -197,59 +197,71 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def show_statistics(data, iline, xline, nrows=1, ncols=1, 
-                    figsize=None, titles=None, **kwargs):
+def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
+                    save_to=None, **kwargs):
     """Show statistics in 2D plots.
 
     Parameters
     ----------
     data : array-like
         Arrays of statistics to show.
-    iline : array-like
-        Array of inline numbers.
-    xline : array-like
-        Array of crossline numbers.
-    nrows : int
-        Number of rows for subplots.
-    ncols : int
-        Number of columns in subplots.
+    stats : str, callable or array-like
+        Name of statistics in statistics zoo, custom function to be avaluated or array of stats.
+    rate : scalar
+        Sampling rate for spectral statistics.
     figsize : array-like, optional
         Output plot size.
-    titles : array of strings
-        Titles for subplots.
+    names : str or array-like, optional
+        Title names to identify subplots.
+    save_to : str or None, optional
+        If not None, save plot to given path.
     kwargs : dict
         Named argumets to matplotlib.pyplot.imshow.
 
     Returns
     -------
-    Plots of statistics distribution.
+    ...
     """
-    if (ncols == 1) and (nrows == 1):
-        data = np.atleast_2d(data)
+    def rms_freq(x, rate):
+        "Calculate rms frequency."
+        spec = abs(np.fft.rfft(x, axis=1))**2
+        spec = spec / spec.sum(axis=1).reshape((-1, 1))
+        freqs = np.fft.rfftfreq(len(x[0]), d=rate)
+        return  np.sqrt((freqs**2 * spec).sum(axis=1))
 
-    enc = preprocessing.LabelEncoder()
-    x = enc.fit_transform(iline)
-    xc = enc.classes_
-    y = enc.fit_transform(xline)
-    yc = enc.classes_
-    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-    im = np.zeros((len(xc), len(yc)))
-    for i, ax in enumerate(axes.reshape(-1)):
-        im[x, y] = data[i]
-        plot = ax.imshow(im.T, **kwargs)
-        step = len(xc) // 9
-        ax.set_xticks(np.arange(0, len(xc), step))
-        ax.set_xticklabels(xc[::step])
-        step = len(yc) // 9
-        ax.set_yticks(np.arange(0, len(yc), step))
-        ax.set_yticklabels(yc[::step])
-        ax.set_aspect('auto')
-        ax.set_xlabel('INLINE') # pylint: disable=expression-not-assigned
-        ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
-        if titles is not None:
-            ax.set_title(titles[i])
+    statistics_zoo = dict(ma_ampl=lambda x, *args: np.mean(abs(x), axis=1),
+                          rms_ampl=lambda x, *args: np.sqrt(np.mean(x**2, axis=1)),
+                          std_ampl=lambda x, *args: np.std(x, axis=1),
+                          rms_freq=rms_freq)
 
-        fig.colorbar(plot, ax=ax)
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
+
+    if isinstance(stats, str) or callable(stats):
+        stats = (stats,)
+
+    if isinstance(names, str):
+        names = (names,)
+
+    _, ax = plt.subplots(2, len(arrs), figsize=figsize, squeeze=False)
+    for i, arr in enumerate(arrs):
+        for k in stats:
+            if isinstance(k, str):
+                func, label = statistics_zoo[k], k
+            else:
+                func, label = k, k.__name__
+
+            ax[0, i].plot(func(arr, rate), label=label)
+
+        ax[0, i].legend()
+        ax[0, i].set_xlim([0, len(arr)])
+        ax[0, i].set_aspect('auto')
+        ax[0, i].set_title(names[i] if names is not None else '')
+        ax[1, i].imshow(arr.T, **kwargs)
+        ax[1, i].set_aspect('auto')
+
+    if save_to is not None:
+        plt.savefig(save_to)
 
     plt.show()
 

@@ -36,61 +36,6 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
 
-def spectral_statistics(data, rate, tslice=None):
-    """Calculate basic statistics (rms, sts, total variance, mode) of trace
-    power spectrum.
-
-    Parameters
-    ----------
-    data : array-like
-        Array of traces.
-    rate : scalar
-        Sampling rate.
-
-    Returns
-    -------
-    stats : array
-        Arrays of rms, sts, total variance, mode for each trace.
-    """
-    if tslice is not None:
-        data = data[:, tslice]
-
-    spec = abs(np.fft.rfft(data, axis=1))**2
-    var = np.sum(abs(np.diff(spec, axis=1)), axis=1)
-    spec = spec / spec.sum(axis=1).reshape((-1, 1))
-    freqs = np.fft.rfftfreq(len(data[0]), d=rate)
-    peak = freqs[np.argmax(spec, axis=1)]
-    mean = (freqs * spec).sum(axis=1)
-    mean2 = (freqs**2 * spec).sum(axis=1)
-    std = np.sqrt(mean2 - mean**2)
-    return np.array([np.sqrt(mean2), std, var, peak])
-
-def time_statistics(data, tslice=None):
-    """Calculate basic statistics (rms, sts, total variance, mode) for traces.
-
-    Parameters
-    ----------
-    data : array-like
-        Array of traces.
-    rate : scalar
-        Sampling rate.
-
-    Returns
-    -------
-    stats : array
-        Arrays of rms, sts, total variance, mode for each trace.
-    """
-    if tslice is not None:
-        data = data[:, tslice]
-
-    peak = np.max(abs(data), axis=1)
-    mean = np.mean(abs(data), axis=1)
-    std = np.std(data, axis=1)
-    mean2 = std**2 + mean**2
-    var = np.sum(abs(np.diff(data, axis=1)), axis=1)
-    res = (np.sqrt(mean2), std, var, peak)
-    return np.array([np.sqrt(mean2), std, var, peak])
-
 def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
     """Write data and headers into SEGY file.
 
