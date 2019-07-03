@@ -17,6 +17,7 @@ from .plot_utils import (IndexTracker, spectrum_plot, seismic_plot, show_statist
                          gain_plot)
 from .seismic_index import FieldIndex
 
+
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
 
@@ -216,6 +217,7 @@ class SeismicBatch(Batch):
 
             for comp in batch.components:
                 setattr(batch, comp, np.array([None] * len(batch.index)))
+
             for i, index in enumerate(new_index):
                 for isrc in batch.components:
                     pos = self.get_pos(None, isrc, index)
@@ -497,7 +499,10 @@ class SeismicBatch(Batch):
         df['timeOffset'] = data
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
-        df.to_csv(path, index=False)
+        
+        for i in [0, 2, 4]:
+            df.insert(i, str(i), "")
+        df.to_csv(path, index=False, sep='\t', header=False, encoding='ascii', mode='a')
         return self
 
     @action
@@ -687,7 +692,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="indices", post='_post_filter_by_mask', target="threads")
     @apply_to_each_component
-    def drop_zero_traces(self, index, num_zero, src, **kwargs):
+    def drop_zero_traces(self, index, src, num_zero, **kwargs):
         """Drop traces with sequence of zeros longer than ```num_zero```.
 
         Parameters
@@ -1103,3 +1108,138 @@ class SeismicBatch(Batch):
         show_statistics(vals, iline=iline, xline=xline, nrows=2, ncols=2,
                         figsize=figsize, titles=titles, **kwargs)
         return self
+
+    @action
+    def normalize_traces(self, src, dst):
+        """Normalize traces to zero mean and unit variance.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the normalized traces.
+        """
+        data = getattr(self, src)
+        data = np.stack(data)
+        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / (np.std(data, axis=2, keepdims=True) + 10 ** -6)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def picking_to_mask(self, src, dst, src_traces='raw'):
+        """Convert picking time to the mask.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        src_traces : str
+            The batch components which contains traces.
+            
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the mask corresponds to the picking.
+        """
+        data = np.concatenate(np.vstack(getattr(self, src)))
+        samples = self.meta[src_traces]['samples']
+        tick = samples[1] - samples[0]
+        data = np.around(data / tick).astype('int')
+        batch_size = data.shape[0]
+        trace_length = self.raw[0].shape[1]
+        ind = tuple(np.array(list(zip(range(batch_size), data))).T)
+        ind[1][ind[1] < 0] = 0
+        mask = np.zeros((batch_size, trace_length))
+        mask[ind] = 1
+        dst_data = np.cumsum(mask, axis=1)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def mask_to_pick(self, src, dst, labels=True):
+        """Convert the mask to picking time. Piciking time corresponds to the
+        begininning of the longest block of consecutive ones in the mask.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        labels: bool, default: False
+            The flag indicates whether action's inputs probabilities or labels.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking times.
+        """
+        data = getattr(self, src)
+        if not labels:
+            data = np.argmax(data, axis=1)
+
+        dst_data = massive_block(data)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def mcm(self, src, dst, eps=3, l=12):
+        """Creates for each trace corresponding Energy function.
+        Based on Coppens(1985) method.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        eps: float, default: 3
+            Stabilization constant that helps reduce the rapid fluctuations of energy function.
+        l: int, default: 12
+            The leading window length.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the energy function.
+        """
+        trace = np.concatenate(getattr(self, src))
+        energy = np.cumsum(trace**2, axis=1)
+        long_win, lead_win = energy, energy
+        lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
+        er = lead_win / (long_win + eps)
+        self.add_components(dst, init=np.array([i for i in er] + [None])[:-1])
+        return self
+
+    @action
+    def energy_to_picking(self, src, dst):
+        """Convert energy function of the trace to the picking time by taking derivative
+        and finding maximum.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking by MCM method.
+        """
+        er = np.stack(getattr(self, src))
+        er = np.gradient(er, axis=1)
+        picking = np.argmax(er, axis=1)
+        self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
+        return self
+    
+    
