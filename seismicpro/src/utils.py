@@ -4,13 +4,31 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
+from scipy.signal import medfilt, hilbert
 import segyio
 
 from . import seismic_index as si
 from ..batchflow import FilesIndex
+from ..batchflow.models.metrics import Metrics
 
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
+
+class PickingMetrics(Metrics):
+    """Class for First Break picking task metrics.
+    """
+    def __init__(self, targets, predictions, gap=3):
+        super().__init__()
+        self.targets = targets
+        self.predictions = predictions
+        self.gap = gap
+
+    def mae(self):
+        return np.mean(np.abs(self.targets - self.predictions))
+
+    def accuracy(self):
+        abs_diff = np.abs(self.targets - self.predictions)
+        return 100 * len(abs_diff[abs_diff < self.gap]) / len(abs_diff)
 
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
@@ -699,3 +717,163 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
     df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
+
+def calc_v_rms(t, speed):
+    r"""Calculate root mean square speed depend on time.
+    Value calculated by following formula:
+
+    $$ V_{rms} = \left(\frac{\sum_0^t V^2}{|V|} \right)^{1/2} $$
+
+    Parameters
+    ----------
+    t : int
+        Time value to calculate $V_rms$.
+
+    speed : array
+        Speed (V) with time values at each moment.
+
+    Returns
+    -------
+        : float
+        $V_{rms}$
+    """
+    if t == 0:
+        return speed[0]
+    return (np.mean(speed[:t]**2))**.5
+
+def calc_sdc(time, speed, v_pow, t_pow):
+    """
+    Calculate spherical divergence correction (SDC).
+    This value has the following formula:
+    $$ g(t) = \frac{V_{rms}^{v_{pow}} * t^{t_{pow}}}{V_0} $$
+
+    Here parameters $v_{pow} and t_{pow} is a hyperparameters.
+    The quality of the correction depends on them.
+
+    Parameters
+    ----------
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    v_pow : float or int
+        Speed's power.
+    t_pow : float or int
+        Time's power.
+
+    Returns
+    -------
+        : float
+        Correction value to suppress the spherical divergence.
+    """
+    correction = (calc_v_rms(time, speed) ** v_pow * time ** t_pow)/speed[0]
+    if correction == 0:
+        return 1.
+    return correction
+
+def time_dep(field, time, speed, v_pow=2, t_pow=1):
+    """ Correction of spherical divergence.
+
+    Parameters
+    ----------
+    field : array or arrays
+        Field for correction.
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    v_pow : float or int
+        Speed's power.
+    t_pow : float or int
+        Time's power.
+
+    Returns
+        : array of arrays
+        Corrected field.
+    """
+    speed = speed[: field.shape[1]]
+    new_field = np.zeros_like(field)
+    for ix, t in enumerate(time):
+        timestamp = field[:, ix]
+        correction_coef = (calc_sdc(t, speed, v_pow=v_pow, t_pow=t_pow)
+                           / calc_sdc(np.max(time), speed, v_pow=v_pow, t_pow=t_pow))
+        new_field[:, ix] = timestamp * correction_coef
+    return new_field
+
+def calculate_sdc_quality(parameters, field, time, speed, window=51):
+    """Calculate the quality of found parameters.
+    The qualiry caluclated as the median of the first order gradient module.
+
+    Parameters
+    ----------
+    parameters : list of 2
+        Power values for speed and time.
+    field : array or arrays
+        Field for compensation.
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    window : int, default 51
+        Size of smoothing window of the median filter.
+
+    Returns
+    -------
+        : float
+        Error with given parameters.
+    """
+    v_pow, t_pow = parameters
+    new_field = time_dep(field, time=time, speed=speed,
+                         v_pow=v_pow, t_pow=t_pow)
+    h_sample = []
+    for trace in new_field:
+        hilb = hilbert(trace).real
+        env = (trace**2 + hilb**2)**.5
+        h_sample.append(env)
+
+    h_sample = np.array(h_sample)
+    mean_sample = np.mean(h_sample, axis=0)
+    max_val = np.max(mean_sample)
+    dt_val = (-1) * (max_val / mean_sample)
+    result = medfilt(dt_val, window)
+    return np.median(np.abs(np.gradient(result)))
+
+def massive_block(data):
+    """ Function that takes 2d array and returns the indices of the
+    beginning of the longest block of ones in each row.
+
+    Parameters
+    ----------
+    data : np.array
+        Array with masks.
+
+    Returns
+    -------
+    ind : list
+        Indices of the beginning of the longest blocks for each row.
+    """
+    arr = np.append(data, np.zeros((data.shape[0], 1)), axis=1)
+    arr = np.insert(arr, 0, 0, axis=1)
+
+    plus_one = np.argwhere((np.diff(arr)) == 1)
+    minus_one = np.argwhere((np.diff(arr)) == -1)
+    
+    if len(plus_one) == 0:
+        return [[0]] * data.shape[0]
+            
+    d = minus_one[:, 1] - plus_one[:, 1]
+    mask = minus_one[:, 0]
+
+    sort = np.lexsort((d, mask))
+    ind = [0] * mask[0]
+    for i in range(len(sort[:-1])):
+        diff = mask[i +1] - mask[i]
+        if diff > 1:
+            ind.append(plus_one[:, 1][sort[i]])
+            ind.extend([0] * (diff - 1))
+        elif diff == 1:
+            ind.append(plus_one[:, 1][sort[i]])
+    ind.append(plus_one[:, 1][sort[-1]])
+    ind.extend([0] * (arr.shape[0] - mask[-1] - 1))
+    ind = [[i] for i in ind]
+    return ind

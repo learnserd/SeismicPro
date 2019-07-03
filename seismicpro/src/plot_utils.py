@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches, colors as mcolors
-
+from scipy.signal import medfilt, hilbert
 
 class IndexTracker:
     """Provides onscroll and update methods for matplotlib scroll_event."""
@@ -44,8 +44,8 @@ class IndexTracker:
             self.ax.set_xlim([0, img.shape[0]])
 
 def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                 pts=None, s=None, c=None, names=None, figsize=None,
-                 save_to=None, dpi=None, **kwargs):
+                 pts=None, s=None, scatter_color=None, names=None, figsize=None,
+                 save_to=None, dpi=None, line_color=None, title=None, **kwargs):
     """Plot seismic traces.
 
     Parameters
@@ -64,7 +64,7 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         The points data positions.
     s : scalar or array_like, shape (n, ), optional
         The marker size in points**2.
-    c : color, sequence, or sequence of color, optional
+    scatter_color : color, sequence, or sequence of color, optional
         The marker color.
     names : str or array-like, optional
         Title names to identify subplots.
@@ -74,12 +74,23 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         If not None, save plot to given path.
     dpi : int, optional, default: None
         The resolution argument for matplotlib.pyplot.savefig.
+    line_color : color, sequence, or sequence of color, optional, default: None
+        The trace color.
+    title : str
+        Plot title.
     kwargs : dict
         Additional keyword arguments for plot.
 
     Returns
     -------
     Multi-column subplots.
+
+    Raises
+    ------
+    ValueError
+        If ```trace_col``` is sequence and it lenght is not equal to the number of traces.
+        If dimensions of given ```arrs``` not in [1, 2].
+
     """
     if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
@@ -87,8 +98,10 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
     if isinstance(names, str):
         names = (names,)
 
-    _, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
+    line_color = 'k' if line_color is None else line_color
+    fig, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
     for i, arr in enumerate(arrs):
+
         if not wiggle:
             arr = np.squeeze(arr)
 
@@ -101,11 +114,19 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
 
             if wiggle:
                 offsets = np.arange(*xlim)
+
+                if isinstance(line_color, str):
+                    line_color = [line_color] * len(offsets)
+
+                if len(line_color) != len(offsets):
+                    raise ValueError("Lenght of line_color must be equal to the number of traces.")
+
                 y = np.arange(*ylim)
-                for k in offsets:
+                for ix, k in enumerate(offsets):
                     x = k + std * arr[k, slice(*ylim)] / np.std(arr)
-                    ax[0, i].plot(x, y, 'k-')
-                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color='k')
+                    col = line_color[ix]
+                    ax[0, i].plot(x, y, '{}-'.format(col))
+                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color=col)
 
             else:
                 ax[0, i].imshow(arr.T, **kwargs)
@@ -114,9 +135,6 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
             ax[0, i].plot(arr, **kwargs)
         else:
             raise ValueError('Invalid ndim to plot data.')
-
-        if pts is not None:
-            ax[0, i].scatter(*pts, s=s, c=c)
 
         if names is not None:
             ax[0, i].set_title(names[i])
@@ -129,11 +147,15 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         if arr.ndim == 1:
             plt.xlim(xlim)
 
+        if pts is not None:
+            ax[0, i].scatter(*pts, s=s, c=scatter_color)
+
         ax[0, i].set_aspect('auto')
 
+    if title is not None:
+        fig.suptitle(title)
     if save_to is not None:
         plt.savefig(save_to, dpi=dpi)
-
     plt.show()
 
 def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
@@ -197,14 +219,89 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
-                    save_to=None, **kwargs):
-    """Show statistics in 2D plots.
+def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
+    r"""Gain's graph plots the ratio of the maximum mean value of
+    the amplitude to the mean value of the amplitude at the moment t.
+
+    First of all the mean amplitude (Am) values for each timestemp (t).
+    After it the resulted value calculated as following:
+
+        $$ G(t) = - \frac{\max{(Am)}}{Am(t)} $$
 
     Parameters
     ----------
-    data : array-like
-        Arrays of statistics to show.
+    sample : array-like
+        Seismogram.
+    window : int, default 51
+        Size of smoothing window of the median filter.
+    xlim : tuple or list with size 2
+        Bounds for plot's x-axis.
+    ylim : tuple or list with size 2
+        Bounds for plot's y-axis.
+    figsize : array-like, optional
+        Output plot size.
+    names : str or array-like, optional
+        Title names to identify subplots.
+
+    Returns
+    -------
+    Gain's plot.
+    """
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
+
+    _, ax = plt.subplots(1, len(arrs), figsize=figsize)
+    if isinstance(ax, np.ndarray):
+        ax = ax.reshape(-1)
+    else:
+        ax = [ax]
+    for ix, sample in enumerate(arrs):
+        h_sample = []
+        for trace in sample:
+            hilb = hilbert(trace).real
+            env = (trace**2 + hilb**2)**.5
+            h_sample.append(env)
+        h_sample = np.array(h_sample)
+        mean_sample = np.mean(h_sample, axis=0)
+        max_val = np.max(mean_sample)
+        dt_val = (-1) * (max_val / mean_sample)
+        result = medfilt(dt_val, window)
+        ax[ix].plot(result, range(len(result)), **kwargs)
+        if names is not None:
+            ax[ix].set_title(names[ix])
+
+        if xlim is None:
+            set_xlim = (max(result)-min(result)*1.1, max(result)+min(result)*1.1)
+        elif isinstance(xlim[0], (int, float)):
+            set_xlim = xlim
+        elif len(xlim) != len(arrs):
+            raise ValueError('Incorrect format for xbounds.')
+        else:
+            set_xlim = xlim[ix]
+
+        if ylim is None:
+            set_ylim = (len(result)+100, -100)
+        elif isinstance(ylim[0], (int, float)):
+            set_ylim = ylim
+        elif len(ylim) != len(arrs):
+            raise ValueError('Incorrect format for ybounds.')
+        else:
+            set_ylim = ylim[ix]
+
+        ax[ix].set_ylim(set_ylim)
+        ax[ix].set_xlim(set_xlim)
+        ax[ix].set_xlabel('Maxamp/Amp')
+        ax[ix].set_ylabel('Time')
+    plt.show()
+
+def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
+                    save_to=None, **kwargs):
+    """Show seismograms and various trace statistics, e.g. rms amplitude and rms frequency.
+
+    Parameters
+    ----------
+    arrs : array-like
+        Seismogram or sequence of seismograms.
     stats : str, callable or array-like
         Name of statistics in statistics zoo, custom function to be avaluated or array of stats.
     rate : scalar
