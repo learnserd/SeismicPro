@@ -3,6 +3,7 @@ import functools
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from scipy.signal import medfilt, hilbert
 import segyio
 
 from . import seismic_index as si
@@ -767,6 +768,126 @@ def build_segy_df(extra_headers=None, name=None, limits=None, **kwargs):
     df.columns = pd.MultiIndex.from_arrays([common_cols + FILE_DEPENDEND_COLUMNS,
                                             [''] * len(common_cols) + [name] * len(FILE_DEPENDEND_COLUMNS)])
     return df
+
+def calc_v_rms(t, speed):
+    r"""Calculate root mean square speed depend on time.
+    Value calculated by following formula:
+
+    $$ V_{rms} = \left(\frac{\sum_0^t V^2}{|V|} \right)^{1/2} $$
+
+    Parameters
+    ----------
+    t : int
+        Time value to calculate $V_rms$.
+
+    speed : array
+        Speed (V) with time values at each moment.
+
+    Returns
+    -------
+        : float
+        $V_{rms}$
+    """
+    if t == 0:
+        return speed[0]
+    return (np.mean(speed[:t]**2))**.5
+
+def calc_sdc(time, speed, v_pow, t_pow):
+    """
+    Calculate spherical divergence correction (SDC).
+    This value has the following formula:
+    $$ g(t) = \frac{V_{rms}^{v_{pow}} * t^{t_{pow}}}{V_0} $$
+
+    Here parameters $v_{pow} and t_{pow} is a hyperparameters.
+    The quality of the correction depends on them.
+
+    Parameters
+    ----------
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    v_pow : float or int
+        Speed's power.
+    t_pow : float or int
+        Time's power.
+
+    Returns
+    -------
+        : float
+        Correction value to suppress the spherical divergence.
+    """
+    correction = (calc_v_rms(time, speed) ** v_pow * time ** t_pow)/speed[0]
+    if correction == 0:
+        return 1.
+    return correction
+
+def time_dep(field, time, speed, v_pow=2, t_pow=1):
+    """ Correction of spherical divergence.
+
+    Parameters
+    ----------
+    field : array or arrays
+        Field for correction.
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    v_pow : float or int
+        Speed's power.
+    t_pow : float or int
+        Time's power.
+
+    Returns
+        : array of arrays
+        Corrected field.
+    """
+    speed = speed[: field.shape[1]]
+    new_field = np.zeros_like(field)
+    for ix, t in enumerate(time):
+        timestamp = field[:, ix]
+        correction_coef = (calc_sdc(t, speed, v_pow=v_pow, t_pow=t_pow)
+                           / calc_sdc(np.max(time), speed, v_pow=v_pow, t_pow=t_pow))
+        new_field[:, ix] = timestamp * correction_coef
+    return new_field
+
+def calculate_sdc_quality(parameters, field, time, speed, window=51):
+    """Calculate the quality of found parameters.
+    The qualiry caluclated as the median of the first order gradient module.
+
+    Parameters
+    ----------
+    parameters : list of 2
+        Power values for speed and time.
+    field : array or arrays
+        Field for compensation.
+    time : array
+        Trace time values.
+    speed : array
+        Wave propagation speed depending on the depth.
+    window : int, default 51
+        Size of smoothing window of the median filter.
+
+    Returns
+    -------
+        : float
+        Error with given parameters.
+    """
+    v_pow, t_pow = parameters
+    new_field = time_dep(field, time=time, speed=speed,
+                         v_pow=v_pow, t_pow=t_pow)
+    h_sample = []
+    for trace in new_field:
+        hilb = hilbert(trace).real
+        env = (trace**2 + hilb**2)**.5
+        h_sample.append(env)
+
+    h_sample = np.array(h_sample)
+    mean_sample = np.mean(h_sample, axis=0)
+    max_val = np.max(mean_sample)
+    dt_val = (-1) * (max_val / mean_sample)
+    result = medfilt(dt_val, window)
+    return np.median(np.abs(np.gradient(result)))
 
 def massive_block(data):
     """ Function that takes 2d array and returns the indices of the

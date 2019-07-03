@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches, colors as mcolors
-
+from scipy.signal import medfilt, hilbert
 
 class IndexTracker:
     """Provides onscroll and update methods for matplotlib scroll_event."""
@@ -219,7 +219,82 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def show_statistics(data, iline, xline, nrows=1, ncols=1, 
+def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
+    r"""Gain's graph plots the ratio of the maximum mean value of
+    the amplitude to the mean value of the amplitude at the moment t.
+
+    First of all the mean amplitude (Am) values for each timestemp (t).
+    After it the resulted value calculated as following:
+
+        $$ G(t) = - \frac{\max{(Am)}}{Am(t)} $$
+
+    Parameters
+    ----------
+    sample : array-like
+        Seismogram.
+    window : int, default 51
+        Size of smoothing window of the median filter.
+    xlim : tuple or list with size 2
+        Bounds for plot's x-axis.
+    ylim : tuple or list with size 2
+        Bounds for plot's y-axis.
+    figsize : array-like, optional
+        Output plot size.
+    names : str or array-like, optional
+        Title names to identify subplots.
+
+    Returns
+    -------
+    Gain's plot.
+    """
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
+
+    _, ax = plt.subplots(1, len(arrs), figsize=figsize)
+    if isinstance(ax, np.ndarray):
+        ax = ax.reshape(-1)
+    else:
+        ax = [ax]
+    for ix, sample in enumerate(arrs):
+        h_sample = []
+        for trace in sample:
+            hilb = hilbert(trace).real
+            env = (trace**2 + hilb**2)**.5
+            h_sample.append(env)
+        h_sample = np.array(h_sample)
+        mean_sample = np.mean(h_sample, axis=0)
+        max_val = np.max(mean_sample)
+        dt_val = (-1) * (max_val / mean_sample)
+        result = medfilt(dt_val, window)
+        ax[ix].plot(result, range(len(result)), **kwargs)
+        if names is not None:
+            ax[ix].set_title(names[ix])
+
+        if xlim is None:
+            set_xlim = (max(result)-min(result)*1.1, max(result)+min(result)*1.1)
+        elif isinstance(xlim[0], (int, float)):
+            set_xlim = xlim
+        elif len(xlim) != len(arrs):
+            raise ValueError('Incorrect format for xbounds.')
+        else:
+            set_xlim = xlim[ix]
+
+        if ylim is None:
+            set_ylim = (len(result)+100, -100)
+        elif isinstance(ylim[0], (int, float)):
+            set_ylim = ylim
+        elif len(ylim) != len(arrs):
+            raise ValueError('Incorrect format for ybounds.')
+        else:
+            set_ylim = ylim[ix]
+
+        ax[ix].set_ylim(set_ylim)
+        ax[ix].set_xlim(set_xlim)
+        ax[ix].set_xlabel('Maxamp/Amp')
+        ax[ix].set_ylabel('Time')
+    plt.show()
+
+def show_statistics(data, iline, xline, nrows=1, ncols=1,
                     figsize=None, titles=None, **kwargs):
     """Show statistics in 2D plots.
 
