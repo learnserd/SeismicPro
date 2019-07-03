@@ -1017,33 +1017,4 @@ class SeismicBatch(Batch):
         self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
         return self
     
-    @action
-    @apply_to_each_component
-    def preprocess_model_inputs(self, src, dst, dtype=np.float32, model_type='1d'):
-        """Prepeare data for loading  torch models.
-        
-        Parameters
-        ----------
-        src : str
-            The batch components to get the data from.
-        dst : str
-            The batch components to put the result in.
-        dtype: str or np.dtype, default: np.float
-            The type array will be casted to
-        model: str, default: '1d'
-            The type of the model. In case of '1.5d' takes only 5th mask.
-            
-        Returns
-        -------
-        batch : SeismicBatch
-            Batch with the modified components.
-        """
-        data = getattr(self, src)
-        data_dst = np.stack(data).astype(dtype)
-        
-        if model_type == '1.5d':
-            data_dst = data_dst[::5, :]
-            
-        setattr(self, dst, data_dst)
-        return self
     
