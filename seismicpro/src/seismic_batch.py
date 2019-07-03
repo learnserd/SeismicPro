@@ -12,7 +12,7 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, time_dep
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, time_dep, massive_block
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
 
@@ -979,7 +979,8 @@ class SeismicBatch(Batch):
             src = (src,)
 
         if src_picking is not None:
-            picking = getattr(self, src_picking)[pos]
+            rate = self.meta[src[0]]['interval'] / 1e3
+            picking = getattr(self, src_picking)[pos] / rate
             pts_picking = (range(len(picking)), picking)
         else:
             pts_picking = None
