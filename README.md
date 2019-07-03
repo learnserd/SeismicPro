@@ -13,10 +13,9 @@ Content
 	* [SPS data](#SPS-data)
 	* [Picking data](#Picking-data)
 * [Datasets](#Datasets)
-    * [Noise attenuation](#Noise-attenuation)
+    * [Ground-roll attenuation](#Ground-roll-attenuation)
     * [First-break picking](#First--break-picking)
 * [Models](#Models)
-    * [Ground-roll attenuation](#Ground-roll-attenuation)
 * [Literature](#Literature)
 
 ## About
@@ -33,10 +32,10 @@ git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 
 A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
-1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
-2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.%20Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Noise attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.%20Noise%20attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
-4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.%20First-break%20picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
+1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
+2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
+3. [Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
+4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.First-break_picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
 
 
 ## File formats
@@ -58,7 +57,7 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 ## Datasets
 
-### Noise attenuation
+### Ground-roll attenuation
 
 See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) for description of datasets.
 
@@ -68,9 +67,12 @@ See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/data
 
 ## Models
 
-### Ground-roll attenuation
-
-See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll%20attenuation/model_description.ipynb) for description of the ground-roll attenuation model.
+|Model|Architecture|Dataset|Metrics|
+|---|---|---|---|
+|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/model_description.ipynb)| U-Net 1D| Datasets 1, 2 for NA| 0.01 L1 
+|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/attention/notebooks/attention-demo.ipynb)| U-Net Attention 1D| Datasets 1, 2 for NA | 0.01 L1, 0.02 L1 in GR area
+|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/supervised_picking/models/First_break_picking/model_estimation.ipynb)| U-Net 1D | Datasets 1, 2, 3 for FB picking | 1.6 MAE, for 94% traces error is less than 3 samples
+|[Inverse Trace Detection](https://github.com/analysiscenter/SeismicPro/blob/action_traces/models/Inverse_traces/find_inverse_traces.ipynb) | RandomForest | Dataset 1 for FB picking | 93% accuracy 
 
 
 ## Literature
@@ -89,4 +91,3 @@ LEARNING APPROACH](https://arxiv.org/pdf/1506.05070)
 Advanced Technology of Image Analysis](https://tel.archives-ouvertes.fr/tel-00731886/document)
 * [CNN-based seismic facies clasification](https://cs230.stanford.edu/projects_spring_2018/reports/8291004.pdf)
 * [Learning to Label Seismic Structures with Deconvolution Networks and Weak Labels](http://www.yalaudah.com/assets/files/seg2018.pdf)
-

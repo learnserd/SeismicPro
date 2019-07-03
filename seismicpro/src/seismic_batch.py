@@ -10,12 +10,10 @@ import segyio
 
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
-from .seismic_index import SegyFilesIndex
-from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
-                    time_statistics, spectral_statistics, time_dep)
-from .plot_utils import (IndexTracker, spectrum_plot, seismic_plot, show_statistics,
-                         gain_plot)
-from .seismic_index import FieldIndex
+from .seismic_index import SegyFilesIndex, FieldIndex
+
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, time_dep
+from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
@@ -208,6 +206,7 @@ class SeismicBatch(Batch):
             mask = np.concatenate((np.array(mask)))
             new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
             new_index = new_idf.index.unique()
+
             batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
                                                       index_name=self.index.name)
 
@@ -565,7 +564,7 @@ class SeismicBatch(Batch):
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
         all_traces = np.concatenate(getattr(batch, dst))[order]
-        self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
+        self.meta[dst] = batch.meta[dst]
 
         if self.index.name is None:
             res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
@@ -574,7 +573,6 @@ class SeismicBatch(Batch):
             res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
         self.add_components(dst, init=res)
-        self.meta[dst]['sorting'] = None
 
         return self
 
@@ -592,10 +590,12 @@ class SeismicBatch(Batch):
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
                                     np.atleast_1d(trace_seq).astype(int)])
             samples = segyfile.samples[tslice]
+            interval = segyfile.bin[segyio.BinField.Interval]
 
         getattr(self, dst)[pos] = traces
         if index == self.indices[0]:
             self.meta[dst]['samples'] = samples
+            self.meta[dst]['interval'] = interval
             self.meta[dst]['sorting'] = None
 
         return self
@@ -932,7 +932,7 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
                      src_picking=None, s=None, scatter_color=None, figsize=None,
                      save_to=None, dpi=None, line_color=None, title=None, **kwargs):
         """Plot seismic traces.
@@ -943,8 +943,6 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        sample_tick : int
-            Number of miliseconds between samples.
         wiggle : bool, default to False
             Show traces in a wiggle form.
         xlim : tuple, optionalgit
@@ -982,10 +980,6 @@ class SeismicBatch(Batch):
 
         if src_picking is not None:
             picking = getattr(self, src_picking)[pos]
-            if to_samples:
-                samples = self.meta[src[0]]['samples']
-                tick = samples[1] - samples[0]
-                picking = picking / tick
             pts_picking = (range(len(picking)), picking)
         else:
             pts_picking = None
@@ -1029,8 +1023,7 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        samples = self.meta[src[0]]['samples']
-        rate = samples[1] - samples[0]
+        rate = self.meta[src[0]]['interval'] / 1e6
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
         return self
@@ -1065,48 +1058,37 @@ class SeismicBatch(Batch):
         gain_plot(sample, window, xlim, ylim, figsize, names, **kwargs)
         return self
 
-    def show_statistics(self, src, index, domain, tslice=None,
-                        figsize=None, **kwargs):
-        """Show statistics in 2D plots.
+    def statistics_plot(self, src, index, stats, figsize=None, save_to=None, **kwargs):
+        """Plot seismogram(s) and various trace statistics.
 
         Parameters
         ----------
-        src : str
-            The batch component with data to use for statistics calculation.
+        src : str or array of str
+            The batch component(s) with data to show.
         index : same type as batch.indices
-            Data index to select data from.
-        domain : str, 'time' or 'frequency'
-            Domain to calculate statistics in.
-        tslice : slice, default to None
-            Slice of time samples to select from data.
+            Data index to show.
+        stats : str, callable or array-like
+            Name of statistics in statistics zoo, custom function to be avaluated or array of stats.
         figsize : array-like, optional
             Output plot size.
+        save_to : str or None, optional
+            If not None, save plot to given path.
         kwargs : dict
             Named argumets to matplotlib.pyplot.imshow.
 
         Returns
         -------
-        Plots of statistics distribution.
+        Plot of seismogram(s) and power spectrum(s).
         """
-        pos = self.get_pos(None, src, index)
-        data = getattr(self, src)[pos]
-        if tslice is not None:
-            data = data[:, tslice]
+        pos = self.get_pos(None, 'indices', index)
+        if len(np.atleast_1d(src)) == 1:
+            src = (src,)
 
-        iline = self.index.get_df(index)['INLINE_3D']
-        xline = self.index.get_df(index)['CROSSLINE_3D']
-        if domain == 'time':
-            vals = time_statistics(data)
-        elif domain == 'frequency':
-            samples = self.meta[src]['samples']
-            rate = samples[1] - samples[0]
-            vals = spectral_statistics(data, rate)
-        else:
-            raise ValueError('Unknown domain.')
-
-        titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
-        show_statistics(vals, iline=iline, xline=xline, nrows=2, ncols=2,
-                        figsize=figsize, titles=titles, **kwargs)
+        arrs = [getattr(self, isrc)[pos] for isrc in src]
+        names = [' '.join([i, str(index)]) for i in src]
+        rate = self.meta[src[0]]['interval'] / 1e6
+        statistics_plot(arrs=arrs, stats=stats, rate=rate, names=names, figsize=figsize,
+                        save_to=save_to, **kwargs)
         return self
 
     @action
