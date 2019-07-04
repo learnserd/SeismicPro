@@ -13,8 +13,6 @@ Content
 	* [SPS data](#SPS-data)
 	* [Picking data](#Picking-data)
 * [Datasets](#Datasets)
-    * [Ground-roll attenuation](#Ground-roll-attenuation)
-    * [First-break picking](#First--break-picking)
 * [Models](#Models)
 * [Literature](#Literature)
 
@@ -34,8 +32,7 @@ A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
 1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
 2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem
-4. [First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/4.First-break_picking.ipynb) notebook shows model training and inference pipelines in a unsupervised first-break picking problem.
+3. [Models](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
 
 
 ## File formats
@@ -57,22 +54,23 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 ## Datasets
 
-### Ground-roll attenuation
+|Problem|Number of datasets|Datasets description|
+|---|---|---|
+|Ground-roll attenuation| 3| In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) 
+|First-break picking| 3 | In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/first_break_picking.ipynb)
+|Spherical divergence correction | 1 | In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/spherical_divergence_correction.ipynb)
 
-See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) for description of datasets.
-
-### First-break picking
-
-See the [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/first_break_picking.ipynb) for description of datasets.
 
 ## Models
 
 |Model|Architecture|Dataset|Metrics|
 |---|---|---|---|
-|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/model_description.ipynb)| U-Net 1D| Datasets 1, 2 for NA| 0.01 L1 
-|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/attention/notebooks/attention-demo.ipynb)| U-Net Attention 1D| Datasets 1, 2 for NA | 0.01 L1, 0.02 L1 in GR area
-|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/supervised_picking/models/First_break_picking/model_estimation.ipynb)| U-Net 1D | Datasets 1, 2, 3 for FB picking | 1.6 MAE, for 94% traces error is less than 3 samples
-|[Inverse Trace Detection](https://github.com/analysiscenter/SeismicPro/blob/action_traces/models/Inverse_traces/find_inverse_traces.ipynb) | RandomForest | Dataset 1 for FB picking | 93% accuracy 
+|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 L1 
+|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.01 L1
+|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/models/First_break_picking/1d_CNN/model_description.ipynb)| U-Net 1D | Datasets 1, 2 for FB picking | 0.27 MAE for dataset 1, 3.1 MAE for dataset 2
+|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/models/First_break_picking/Coppen's_unsupervised_method/model_description.ipynb)| Coppen's analytical method | Datasets 3 for FB picking | 12.6 MAE
+|[Inverse Trace Detection]() | RandomForest | Dataset 1 for FB picking | 93% accuracy
+|[Spherical divergence correction]() | LinearRegression | Dataset 1 for TAR | -
 
 
 ## Literature
