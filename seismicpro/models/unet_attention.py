@@ -2,6 +2,7 @@
 import tensorflow as tf
 
 from ..batchflow.batchflow.models.tf import UNet
+from ..batchflow.batchflow.models.tf.layers import conv_block
 
 class UnetAtt(UNet):
     def body(self, inputs, *args, **kwargs):
