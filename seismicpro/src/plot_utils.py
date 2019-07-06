@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches, colors as mcolors
-from scipy.signal import medfilt, hilbert
+from .utils import measure_gain_amplitude
 
 class IndexTracker:
     """Provides onscroll and update methods for matplotlib scroll_event."""
@@ -221,10 +221,15 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
 def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
     r"""Gain's graph plots the ratio of the maximum mean value of
-    the amplitude to the mean value of the amplitude at the moment t.
+    the amplitude to the mean value of the smoothed amplitude at the moment t.
 
-    First of all the mean amplitude (Am) values for each timestemp (t).
-    After it the resulted value calculated as following:
+    First of all for each trace the smoothed version calculated by following formula:
+        $$Am = \sqrt{\mathcal{H}(Am)^2 + Am^2}, \ where$$
+    Am - Amplitude of trace.
+    $\mathcal{H}$ - is a Hilbert transformaion.
+
+    Then the average values of the amplitudes (Am) at each time (t) are calculated.
+    After it the resulted value received from the following equation:
 
         $$ G(t) = - \frac{\max{(Am)}}{Am(t)} $$
 
@@ -256,16 +261,7 @@ def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, *
     else:
         ax = [ax]
     for ix, sample in enumerate(arrs):
-        h_sample = []
-        for trace in sample:
-            hilb = hilbert(trace).real
-            env = (trace**2 + hilb**2)**.5
-            h_sample.append(env)
-        h_sample = np.array(h_sample)
-        mean_sample = np.mean(h_sample, axis=0)
-        max_val = np.max(mean_sample)
-        dt_val = (-1) * (max_val / mean_sample)
-        result = medfilt(dt_val, window)
+        result = measure_gain_amplitude(sample, window)
         ax[ix].plot(result, range(len(result)), **kwargs)
         if names is not None:
             ax[ix].set_title(names[ix])

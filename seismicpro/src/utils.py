@@ -115,7 +115,7 @@ def merge_segy_files(output_path, bar=True, **kwargs):
 
     with segyio.create(output_path, spec) as dst:
         i = 0
-        iterable = tqdm(segy_index.indices) if bar else segy_index.indices 
+        iterable = tqdm(segy_index.indices) if bar else segy_index.indices
         for index in iterable:
             with segyio.open(index, strict=False) as src:
                 dst.trace[i: i + src.tracecount] = src.trace
@@ -800,6 +800,34 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         new_field[:, ix] = timestamp * correction_coef
     return new_field
 
+
+def measure_gain_amplitude(field, window):
+    """Calculate the gain amplitude.
+
+    Parameters
+    ----------
+    field : array or arrays
+        Field for amplitude measuring.
+
+    Returns
+    -------
+        : array
+        amplitude values in each moment t
+        after transformations.
+    """
+    h_sample = []
+    for trace in field:
+        hilb = hilbert(trace).real
+        env = (trace**2 + hilb**2)**.5
+        h_sample.append(env)
+
+    h_sample = np.array(h_sample)
+    mean_sample = np.mean(h_sample, axis=0)
+    max_val = np.max(mean_sample)
+    dt_val = (-1) * (max_val / mean_sample)
+    result = medfilt(dt_val, window)
+    return result
+
 def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """Calculate the quality of found parameters.
     The qualiry caluclated as the median of the first order gradient module.
@@ -822,20 +850,12 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
         : float
         Error with given parameters.
     """
+
     v_pow, t_pow = parameters
     new_field = time_dep(field, time=time, speed=speed,
                          v_pow=v_pow, t_pow=t_pow)
-    h_sample = []
-    for trace in new_field:
-        hilb = hilbert(trace).real
-        env = (trace**2 + hilb**2)**.5
-        h_sample.append(env)
 
-    h_sample = np.array(h_sample)
-    mean_sample = np.mean(h_sample, axis=0)
-    max_val = np.max(mean_sample)
-    dt_val = (-1) * (max_val / mean_sample)
-    result = medfilt(dt_val, window)
+    result = measure_gain_amplitude(new_field, window)
     return np.median(np.abs(np.gradient(result)))
 
 def massive_block(data):
@@ -857,10 +877,10 @@ def massive_block(data):
 
     plus_one = np.argwhere((np.diff(arr)) == 1)
     minus_one = np.argwhere((np.diff(arr)) == -1)
-    
+
     if len(plus_one) == 0:
         return [[0]] * data.shape[0]
-            
+
     d = minus_one[:, 1] - plus_one[:, 1]
     mask = minus_one[:, 0]
 
