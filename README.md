@@ -30,9 +30,9 @@ git clone --recursive https://github.com/analysiscenter/SeismicPro.git
 
 A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
-1. [Index](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
-2. [Batch](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Models](https://github.com/analysiscenter/SeismicPro/blob/master/tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
+1. [Index](tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
+2. [Batch](tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
+3. [Models](tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
 
 
 ## File formats
@@ -56,20 +56,20 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 |Problem|Number of datasets|Datasets description|
 |---|---|---|
-|Ground-roll attenuation| 3| In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/noise_attenuation.ipynb) 
-|First-break picking| 3 | In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/first_break_picking.ipynb)
-|Spherical divergence correction | 1 | In [notebook](https://github.com/analysiscenter/SeismicPro/blob/master/datasets/spherical_divergence_correction.ipynb)
+|Ground-roll attenuation| 3| In [notebook](datasets/noise_attenuation.ipynb) 
+|First-break picking| 3 | In [notebook](datasets/first_break_picking.ipynb)
+|Spherical divergence correction | 1 | In [notebook](datasets/spherical_divergence_correction.ipynb)
 
 
 ## Models
 
 |Model|Architecture|Dataset|Metrics|
 |---|---|---|---|
-|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 L1 
-|[Ground-roll attenuation](https://github.com/analysiscenter/SeismicPro/blob/master/models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.02 L1
-|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/models/First_break_picking/1d_CNN/model_description.ipynb)| U-Net 1D | Datasets 1, 2 for FB picking | 0.27 MAE for dataset 1, 3.1 MAE for dataset 2
-|[First-break picking](https://github.com/analysiscenter/SeismicPro/blob/master/models/First_break_picking/Coppen's_unsupervised_method/model_description.ipynb)| Coppen's analytical method | Datasets 3 for FB picking | 12.6 MAE
-|[Spherical divergence correction]() | LinearRegression | Dataset 1 for TAR | -
+|[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 L1 
+|[Ground-roll attenuation](models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.02 L1
+|[First-break picking](models/First_break_picking/1d_CNN/model_description.ipynb)| U-Net 1D | Datasets 1, 2 for FB picking | 0.27 MAE for dataset 1, 3.1 MAE for dataset 2
+|[First-break picking](models/First_break_picking/Coppen's_unsupervised_method/model_description.ipynb)| Coppen's analytical method | Datasets 3 for FB picking | 12.6 MAE
+|[Spherical divergence correction](models/Spherical_divergence_correction/model_description.ipynb) | Time and speed based method | Dataset 1 for SDC | 0.0017 Derivative metric
 
 
 ## Literature
