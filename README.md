@@ -32,7 +32,7 @@ A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
 1. [Index](tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
 2. [Batch](tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Models](tutorials/3.Noise_attenuation.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
+3. [Models](tutorials/3.Models.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
 
 
 ## File formats
@@ -56,7 +56,7 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 |Problem|Number of datasets|Datasets description|
 |---|---|---|
-|Ground-roll attenuation| 3| In [notebook](datasets/noise_attenuation.ipynb) 
+|Ground-roll attenuation| 3| In [notebook](datasets/ground-roll_attenuation.ipynb) 
 |First-break picking| 3 | In [notebook](datasets/first_break_picking.ipynb)
 |Spherical divergence correction | 1 | In [notebook](datasets/spherical_divergence_correction.ipynb)
 
