@@ -256,18 +256,15 @@ def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, *
         arrs = (arrs,)
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize)
-    if isinstance(ax, np.ndarray):
-        ax = ax.reshape(-1)
-    else:
-        ax = [ax]
+    ax = ax.reshape(-1) if isinstance(ax, np.ndarray) else [ax]
+
     for ix, sample in enumerate(arrs):
         result = measure_gain_amplitude(sample, window)
         ax[ix].plot(result, range(len(result)), **kwargs)
         if names is not None:
             ax[ix].set_title(names[ix])
-
         if xlim is None:
-            set_xlim = (max(result)-min(result)*1.1, max(result)+min(result)*1.1)
+            set_xlim = (max(result)-min(result)*.1, max(result)+min(result)*1.1)
         elif isinstance(xlim[0], (int, float)):
             set_xlim = xlim
         elif len(xlim) != len(arrs):
