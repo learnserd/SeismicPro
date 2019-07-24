@@ -97,8 +97,8 @@ def merge_segy_files(output_path, bar=True, **kwargs):
     ----------
     output_path : str
         Path to output file.
-    bar : bool, deafult to True
-        Whether to how progress bar.
+    bar : bool
+        Whether to how progress bar (default = True).
     kwargs : dict
         Keyword arguments to index input segy files.
 

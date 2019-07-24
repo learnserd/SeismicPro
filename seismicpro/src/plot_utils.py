@@ -310,7 +310,7 @@ def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
 
     Returns
     -------
-    ...
+    Plots of seismorgams and trace statistics.
     """
     def rms_freq(x, rate):
         "Calculate rms frequency."
