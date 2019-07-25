@@ -153,6 +153,7 @@ class SeismicBatch(Batch):
         super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.meta = dict()
+        self.global_params = None
 
     def _init_component(self, *args, dst, **kwargs):
         """Create and preallocate a new attribute with the name ``dst`` if it
@@ -787,10 +788,14 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def correct_spherical_divergence(self, src, dst, speed, time=None, fun=None, started_point=None, # pylint: disable=too-many-arguments
-                                     v_pow=None, t_pow=None, method='Powell', use_for_all=False,
-                                     find_params=True, params_comp=None, bounds=None):
-        """Correction of spherical divergence with given parameers or with optimal parameters.
+    def correct_spherical_divergence(self, src, dst, speed, time=None, v_pow=None, t_pow=None, loss=None, # pylint: disable=too-many-arguments
+                                     started_point=None, method='Powell', save_params_to=None,
+                                     evaluate='ones', bounds=None):
+        """Correction of spherical divergence with given parameers or with optimal parameters. There are three
+        ways to use this funcion. The simplest way is to determine v_pow and t_pow then correction will be made
+        with given parameters. Another approach is to find the parameters by optimizing ```loss``` function which
+        reflects the quality of the found parameters and use this parameters for all dataset or finding parameters
+        for each field separately. For this choice ```evaluate``` parameter is used.
 
         Parameters
         ----------
@@ -801,25 +806,22 @@ class SeismicBatch(Batch):
         speed : array
             Wave propagation speed depending on the depth.
         time : array, optimal
-            Trace time values. By default self.meta[src]['samples'] is used.
-        fun : callable, optional
-            Function to minimize.
-        started_point : array of 2, optional
-            Started values for $v_{pow}$ and $t_{pow}$.
+           Trace time values. The default is self.meta[src]['samples'].
         v_pow : float or int, optional
             Speed's power.
         t_pow : float or int, optional
             Time's power.
-        method : str, optional
-            Minimization method, see ```scipy.optimize.minimize```. Default Powell
-        use_for_all : bool, default False
-            If true, optimal parameters for first element will be used for all batch,
-            else optimal parameters will find for each field separately.
-        find_params : bool, default True
-            If true, fields will be compensated with founeded parameres by scipy minimize
-            function, else will be used parameters from arguments.
-        params_comp : None of str, default None
-            If str, parameters will be saved in a component with name ```params_comp```.
+        loss : callable, optional
+            Function to minimize.
+        started_point : array of 2, optional
+            Started values for $v_{pow}$ and $t_{pow}$.
+        method : str, optional, default ```Powell```
+            Minimization method, see ```scipy.optimize.minimize```.
+        save_params_to : None or str, default None
+            If str, parameters will be saved in a component with name ```save_params_to```.
+        evaluate : or 'ones' or 'all', default 'ones'
+            If 'ones', optmial values will be founded by the first field and use for all dataset.
+            If 'all', optimal values will be calculated for each field separately.
         bounds : int, default ((0, 5), (0, 5))
             Optimization bounds.
 
@@ -830,11 +832,14 @@ class SeismicBatch(Batch):
 
         Note
         ----
-        Works properly only with FieldIndex.
+        Works properly only with FieldIndex. If you want to find parameters by optimization loss function
+        than ```v_pow``` and ```t_pow``` should be None else optimization wouldn't work.
 
         Raises
         ------
         ValueError : If Index is not FieldIndex.
+        ValueError : If ```evaluate``` is not in ['ones', 'all'].
+        ValueError : If one of ```v_pow``` or ```t_pow``` is None while another is not None.
         """
         fields = getattr(self, src)
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
@@ -846,25 +851,41 @@ class SeismicBatch(Batch):
         step = np.diff(time[:2])[0].astype(int)
         speed = np.array(speed, dtype=int)[::step]
 
-        if find_params:
-            if use_for_all:
-                field = fields[0]
-                args = (field, time, speed)
-
-                func = minimize(fun, started_point, args=args, method=method, bounds=bounds)
-                v_pow, t_pow = func.x
-
-                if params_comp is not None:
-                    setattr(self, params_comp, np.array([v_pow, t_pow]))
-                self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
+        if v_pow is None and t_pow is None:
+            if evaluate == 'ones':
+                if self.global_params is None:
+                    self._find_optimal_params(src=src, dst=dst, time=time, speed=speed, field=fields[0],
+                                              loss=loss, started_point=started_point, method=method,
+                                              save_params_to=save_params_to, bounds=bounds)
+                else:
+                    v_pow, t_pow = self.global_params
+                    self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
+            elif evaluate == 'all':
+                self._find_and_correct_sd(src=src, dst=dst, loss=loss, started_point=started_point,
+                                          arr=(time, speed), method=method, save_params_to=save_params_to,
+                                          bounds=bounds)
             else:
-                self._find_and_correct_sd(src=src, dst=dst, fun=fun, started_point=started_point,
-                                          arr=(time, speed), method=method, params_comp=params_comp, bounds=bounds)
+                ValueError('Wrong value for ```evaluate```.')
         else:
             if None in [v_pow, t_pow]:
-                raise ValueError("pow_t or pow_v can't be None if find_params is False ")
+                raise ValueError("```pow_t``` or ```pow_v``` can't be None while another is not None ")
             self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
         return self
+
+    def _find_optimal_params(self, src, dst, time, speed, field, loss, started_point, # pylint: disable=too-many-arguments
+                             method, bounds, save_params_to):
+        with self.lock:
+            if self.global_params is None:
+                args = (field, time, speed)
+                func = minimize(loss, started_point, args=args, method=method, bounds=bounds)
+                v_pow, t_pow = func.x
+                self.global_params = (v_pow, t_pow)
+                if save_params_to is not None:
+                    if save_params_to not in self.components:
+                        self.add_components(save_params_to, init=np.array([v_pow, t_pow]))
+                    else:
+                        setattr(self, save_params_to, np.array([v_pow, t_pow]))
+                self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
 
     @inbatch_parallel(init='_init_component')
     def _correct_sph_div(self, index, src, dst, time, speed, v_pow, t_pow):
@@ -878,21 +899,23 @@ class SeismicBatch(Batch):
         return self
 
     @inbatch_parallel(init='_init_component')
-    def _find_and_correct_sd(self, index, src, dst, fun, started_point, arr, method, params_comp, bounds):
+    def _find_and_correct_sd(self, index, src, dst, loss, started_point, arr, method, save_params_to, bounds):
         """Find optimal parameters and correct spherical divergence. """
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
-
         time, speed = arr
         args = (field, *arr)
-        func = minimize(fun, started_point, args=args, method=method, bounds=bounds)
+        func = minimize(loss, started_point, args=args, method=method, bounds=bounds)
         v_pow, t_pow = func.x
-        if params_comp is not None:
-            if getattr(self, params_comp) is None:
-                raise ValueError('```params_comp``` should be an array but got None')
-            getattr(self, params_comp)[pos] = np.array([v_pow, t_pow])
+        if save_params_to is not None:
+            if save_params_to not in self.components:
+                self.add_components(save_params_to, init=self.arary_of_nones)
+            elif getattr(self, save_params_to) is None:
+                raise ValueError('```save_params_to``` should be an array but got None')
+            getattr(self, save_params_to)[pos] = np.array([v_pow, t_pow])
         getattr(self, dst)[pos] = calculate_corrected_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
         return self
+
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:
