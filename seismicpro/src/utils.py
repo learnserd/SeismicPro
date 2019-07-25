@@ -14,22 +14,6 @@ from ..batchflow.models.metrics import Metrics
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
 
-class PickingMetrics(Metrics):
-    """Class for First Break picking task metrics.
-    """
-    def __init__(self, targets, predictions, gap=3):
-        super().__init__()
-        self.targets = targets
-        self.predictions = predictions
-        self.gap = gap
-
-    def mae(self):
-        return np.mean(np.abs(self.targets - self.predictions))
-
-    def accuracy(self):
-        abs_diff = np.abs(self.targets - self.predictions)
-        return 100 * len(abs_diff[abs_diff < self.gap]) / len(abs_diff)
-
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
     arguments.
