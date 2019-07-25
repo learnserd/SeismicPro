@@ -741,9 +741,8 @@ def calc_v_rms(t, speed):
         return speed[0]
     return (np.mean(speed[:t]**2))**.5
 
-def calc_sdc(time, speed, v_pow, t_pow):
-    """
-    Calculate spherical divergence correction (SDC).
+def calc_sdc(ix, time, speed, v_pow, t_pow):
+    """ Calculate spherical divergence correction (SDC).
     This value has the following formula:
     $$ g(t) = \frac{V_{rms}^{v_{pow}} * t^{t_{pow}}}{V_0} $$
 
@@ -766,12 +765,12 @@ def calc_sdc(time, speed, v_pow, t_pow):
         : float
         Correction value to suppress the spherical divergence.
     """
-    correction = (calc_v_rms(time, speed) ** v_pow * time ** t_pow)/speed[0]
+    correction = (calc_v_rms(ix, speed) ** v_pow * time[ix] ** t_pow)/speed[0]
     if correction == 0:
         return 1.
     return correction
 
-def time_dep(field, time, speed, v_pow=2, t_pow=1):
+def calculate_corrected_field(field, time, speed, v_pow=2, t_pow=1):
     """ Correction of spherical divergence.
 
     Parameters
@@ -791,12 +790,11 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         : array of arrays
         Corrected field.
     """
-    speed = speed[: field.shape[1]]
     new_field = np.zeros_like(field)
-    for ix, t in enumerate(time):
+    for ix in range(field.shape[1]):
         timestamp = field[:, ix]
-        correction_coef = (calc_sdc(t, speed, v_pow=v_pow, t_pow=t_pow)
-                           / calc_sdc(np.max(time), speed, v_pow=v_pow, t_pow=t_pow))
+        correction_coef = (calc_sdc(ix, time, speed, v_pow=v_pow, t_pow=t_pow)
+                           / calc_sdc(np.argmax(time), time, speed, v_pow=v_pow, t_pow=t_pow))
         new_field[:, ix] = timestamp * correction_coef
     return new_field
 
@@ -852,8 +850,8 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """
 
     v_pow, t_pow = parameters
-    new_field = time_dep(field, time=time, speed=speed,
-                         v_pow=v_pow, t_pow=t_pow)
+    new_field = calculate_corrected_field(field, time=time, speed=speed,
+                                          v_pow=v_pow, t_pow=t_pow)
 
     result = measure_gain_amplitude(new_field, window)
     return np.median(np.abs(np.gradient(result)))

@@ -12,7 +12,7 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, time_dep, massive_block
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, calculate_corrected_field, massive_block
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
 
@@ -787,8 +787,8 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def correct_spherical_divergence(self, src, dst, time, speed, fun=None, started_point=None, # pylint: disable=too-many-arguments
-                                     v_pow=None, t_pow=None, method=None, use_for_all=False,
+    def correct_spherical_divergence(self, src, dst, speed, time=None, fun=None, started_point=None, # pylint: disable=too-many-arguments
+                                     v_pow=None, t_pow=None, method='Powell', use_for_all=False,
                                      find_params=True, params_comp=None, bounds=None):
         """Correction of spherical divergence with given parameers or with optimal parameters.
 
@@ -798,10 +798,10 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        time : array
-            Trace time values.
         speed : array
             Wave propagation speed depending on the depth.
+        time : array, optimal
+            Trace time values. By default self.meta[src]['samples'] is used.
         fun : callable, optional
             Function to minimize.
         started_point : array of 2, optional
@@ -811,7 +811,7 @@ class SeismicBatch(Batch):
         t_pow : float or int, optional
             Time's power.
         method : str, optional
-            Minimization method, see ```scipy.optimize.minimize```.
+            Minimization method, see ```scipy.optimize.minimize```. Default Powell
         use_for_all : bool, default False
             If true, optimal parameters for first element will be used for all batch,
             else optimal parameters will find for each field separately.
@@ -842,8 +842,9 @@ class SeismicBatch(Batch):
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
 
-        time = time if isinstance(time, int) else np.array(time, dtype=int)
-        speed = speed if isinstance(speed, int) else np.array(speed, dtype=int)
+        time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
+        step = np.diff(time[:2])[0].astype(int)
+        speed = np.array(speed, dtype=int)[::step]
 
         if find_params:
             if use_for_all:
@@ -871,7 +872,7 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        correct_field = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
+        correct_field = calculate_corrected_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
 
         getattr(self, dst)[pos] = correct_field
         return self
@@ -890,7 +891,7 @@ class SeismicBatch(Batch):
             if getattr(self, params_comp) is None:
                 raise ValueError('```params_comp``` should be an array but got None')
             getattr(self, params_comp)[pos] = np.array([v_pow, t_pow])
-        getattr(self, dst)[pos] = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
+        getattr(self, dst)[pos] = calculate_corrected_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
