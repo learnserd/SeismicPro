@@ -23,7 +23,7 @@ class UnetAtt(UNet):
         att = conv_block(att, layout='ca', kernel_size=3, filters=1, units=1,
                          activation=tf.nn.sigmoid, name='head_att')
 
-        #Quick estimation of sigmoid center location  
+        #Quick estimation of sigmoid center location
         att_sum = tf.reduce_sum(att, axis=1, keepdims=True)
 
         #Define a domain for sigmoid function
@@ -33,7 +33,7 @@ class UnetAtt(UNet):
         sigm_x = sigm_x - arange
 
         #Shallow network that estimates sigmoid center location and shoothness
-        #based on its quick estimation and offset 
+        #based on its quick estimation and offset
         shift_in = tf.concat([tf.squeeze(att_sum, axis=1), offset], axis=1)
         shift_in = tf.layers.dense(shift_in, 16, activation=tf.nn.elu)
         shift_in = tf.layers.dense(shift_in, 16, activation=tf.nn.elu)

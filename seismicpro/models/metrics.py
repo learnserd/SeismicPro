@@ -29,7 +29,7 @@ class FieldMetrics(Metrics):
         std = np.std(a, axis=1, keepdims=True)
         std[~(std > 0)] = 1
         a = a / std
-        
+
         b = (b - np.mean(b, axis=1, keepdims=True))
         std = np.std(b, axis=1, keepdims=True)
         std[~(std > 0)] = 1
