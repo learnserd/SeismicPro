@@ -25,17 +25,17 @@ class FieldMetrics(Metrics):
         """Correlation coeffitients."""
         a = self.targets
         b = self.predictions
-        an = (a - np.mean(a, axis=1, keepdims=True))
+        a = (a - np.mean(a, axis=1, keepdims=True))
         std = np.std(a, axis=1, keepdims=True)
         std[~(std > 0)] = 1
-        an = an / std
+        a = a / std
         
-        bn = (b - np.mean(b, axis=1, keepdims=True))
+        b = (b - np.mean(b, axis=1, keepdims=True))
         std = np.std(b, axis=1, keepdims=True)
         std[~(std > 0)] = 1
-        bn = bn / std
+        b = b / std
 
-        corr = (an * bn).sum(axis=1) / an.shape[1]
+        corr = (a * b).sum(axis=1) / a.shape[1]
         if reduce is None:
             return corr
         if isinstance(reduce, str):

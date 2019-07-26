@@ -65,7 +65,7 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 |Model|Architecture|Dataset|Metrics|
 |---|---|---|---|
-|[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 MAE
+|[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.004 MAE
 |[Ground-roll attenuation](models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.007 MAE
 |[First-break picking](models/First_break_picking/1d_CNN/model_description.ipynb)| U-Net 1D | Datasets 1, 2, 3 for FB picking <br/> | 0.06 MAE for dataset 1 <br/> 0.7 MAE for dataset 2 <br/> 15.88 MAE for dataset 3
 |[First-break picking](models/First_break_picking/Coppen's_unsupervised_method/model_description.ipynb)| Coppen's analytical method | Datasets 1, 2, 3 for FB picking | 7.57 MAE for dataset 1 <br/> 7.19 MAE for dataset 2 <br/> 12.6 MAE for dataset 3

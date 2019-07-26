@@ -7,7 +7,7 @@ from ..batchflow.batchflow.models.tf.layers import conv_block
 class UnetAtt(UNet):
     """Class for Unet Attention model."""
     def body(self, inputs, *args, **kwargs):
-        _ = args
+        _ = args, kwargs
         main_config = self.config['main_config']
         attn_config = self.config['attn_config']
         raw, offset = inputs
@@ -16,7 +16,7 @@ class UnetAtt(UNet):
         return main, att, raw, offset
 
     def head(self, inputs, *args, **kwargs):
-        _ = args
+        _ = args, kwargs
         main, att, raw, offset = inputs
 
         #Get a single channel with sigmoid activation for the attention branch
@@ -76,6 +76,7 @@ def attention_loss(targets, predictions, balance, **kwargs):
     loss : tensor
         Computed loss.
     """
+    _ = kwargs
     out_lift = predictions[0]
     attention_sigmoid = predictions[1]
     loss = (tf.losses.absolute_difference(targets, out_lift) +
