@@ -65,8 +65,8 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 |Model|Architecture|Dataset|Metrics|
 |---|---|---|---|
-|[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 L1 
-|[Ground-roll attenuation](models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.02 L1
+|[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| Datasets 1 for NA| 0.01 MAE
+|[Ground-roll attenuation](models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| Datasets 1 for NA | 0.007 MAE
 |[First-break picking](models/First_break_picking/1d_CNN/model_description.ipynb)| U-Net 1D | Datasets 1, 2 for FB picking <br/> | 0.27 MAE for dataset 1 <br/> 3.1 MAE for dataset 2
 |[First-break picking](models/First_break_picking/Coppen's_unsupervised_method/model_description.ipynb)| Coppen's analytical method | Datasets 3 for FB picking | 12.6 MAE
 |[First-break picking](models/First_break_picking/Hidden_Markov_model/model_description.ipynb)| Hidden Markov model | Datasets 1, 2, 3 for FB picking | 2.6 MAE for dataset 1 <br/> 23.4 MAE for dataset 2 <br/> 8.0 MAE for dataset 3

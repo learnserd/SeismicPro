@@ -218,6 +218,28 @@ class SeismicBatch(Batch):
                     getattr(batch, isrc)[i] = new_data
         return batch
 
+    def trace_headers(self, header, flatten=False):
+        """Get trace heades.
+
+        Parameters
+        ----------
+        header : string
+            Header name.
+        flatten : bool
+            If False, array of headers will be splitted according to batch item sizes.
+            If True, return a flattened array. Dafault to False.
+
+        Returns
+        -------
+        arr : ndarray
+            Arrays of trace headers."""
+        tracecounts = self.index.tracecounts
+        values = self.index.get_df()[header].values
+        if flatten:
+            return values
+
+        return np.array(np.split(values, np.cumsum(tracecounts)[:-1]) + [None])[:-1]
+
     @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
