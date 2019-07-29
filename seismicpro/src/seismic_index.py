@@ -6,7 +6,7 @@ import segyio
 
 from ..batchflow import DatasetIndex
 
-from . import utils as ut
+from .utils import make_bin_index, build_sps_df, build_segy_df
 from .plot_utils import show_2d_heatmap, show_1d_heatmap
 
 
@@ -204,9 +204,9 @@ class TraceIndex(DatasetIndex):
     def build_df(self, **kwargs):
         """Build DataFrame."""
         if 'dfx' in kwargs.keys():
-            return ut.build_sps_df(**kwargs)
+            return build_sps_df(**kwargs)
 
-        return ut.build_segy_df(**kwargs)
+        return build_segy_df(**kwargs)
 
     def build_from_index(self, index, idf):
         """Build index from another index for indices given."""
@@ -389,7 +389,7 @@ class BinsIndex(TraceIndex):
 
     def build_df(self, **kwargs):
         """Build DataFrame."""
-        df, meta = ut.make_bin_index(**kwargs)
+        df, meta = make_bin_index(**kwargs)
         self.meta.update(meta)
         return df
 
