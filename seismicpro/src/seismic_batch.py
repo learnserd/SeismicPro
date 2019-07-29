@@ -1208,7 +1208,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def mcm(self, src, dst, eps=3, l=12):
+    def mcm(self, src, dst, eps=3, length_win=12):
         """Creates for each trace corresponding Energy function.
         Based on Coppens(1985) method.
 
@@ -1231,9 +1231,9 @@ class SeismicBatch(Batch):
         trace = np.concatenate(getattr(self, src))
         energy = np.cumsum(trace**2, axis=1)
         long_win, lead_win = energy, energy
-        lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
-        er = lead_win / (long_win + eps)
-        self.add_components(dst, init=np.array([i for i in er] + [None])[:-1])
+        lead_win[:, length_win:] = lead_win[:, length_win:] - lead_win[:, :-length_win]
+        energy = lead_win / (long_win + eps)
+        self.add_components(dst, init=np.array([i for i in energy] + [None])[:-1])
         return self
 
     @action
@@ -1253,8 +1253,8 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the predicted picking by MCM method.
         """
-        er = np.stack(getattr(self, src))
-        er = np.gradient(er, axis=1)
-        picking = np.argmax(er, axis=1)
+        energy = np.stack(getattr(self, src))
+        energy = np.gradient(energy, axis=1)
+        picking = np.argmax(energy, axis=1)
         self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
         return self
