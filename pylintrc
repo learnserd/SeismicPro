@@ -10,7 +10,7 @@ max-locals=25
 good-names=ax,im,ix,a,b,c,h,_,n,p,s,fs,i,j,k,t,x,y,z,lc,rc,xc,yc,df
 
 [MESSAGE CONTROL]
-disable=no-value-for-parameter,no-self-use,too-few-public-methods,unsubscriptable-object,no-method-argument,no-member,arguments-differ,len-as-condition,keyword-arg-before-vararg,too-many-locals
+disable=no-member, no-value-for-parameter, no-self-use, too-many-locals, too-few-public-methods, too-many-public-methods, too-many-branches, unsubscriptable-object, redefined-variable-type, too-many-star-expressions, duplicate-code, not-context-manager, too-many-lines, global-statement, locally-disabled, wrong-import-position, invalid-sequence-index, redundant-keyword-arg, bad-super-call, no-self-argument, redefined-builtin, arguments-differ, len-as-condition, keyword-arg-before-vararg, assignment-from-none, useless-return, useless-import-alias, unnecessary-pass, cyclic-import, assignment-from-no-return, comparison-with-callable, unnecessary-lambda, no-method-argument, blacklisted-name
 
 [TYPECHECK]
 ignored-modules=numpy

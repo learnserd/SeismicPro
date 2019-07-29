@@ -389,7 +389,7 @@ def show_research(df, layout=None, average_repetitions=False, log_scale=False, r
     if color is None:
         color = list(mcolors.CSS4_COLORS.keys())
     df_len = len(df['config'].unique())
-    replace = False if len(color) > df_len else True
+    replace = not len(color) > df_len
     chosen_colors = np.random.choice(color, replace=replace, size=df_len)
 
     _, ax = plt.subplots(1, len(layout), figsize=(9 * len(layout), 7))
