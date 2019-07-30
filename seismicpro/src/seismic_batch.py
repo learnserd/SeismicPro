@@ -1142,15 +1142,19 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the normalized traces.
         """
-        data = getattr(self, src)
-        data = np.stack(data)
-        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / (np.std(data, axis=2, keepdims=True) + 10 ** -6)
+        data = np.concatenate(getattr(self, src))
+        std_data = (data - np.mean(data, axis=1, keepdims=True)) / (np.std(data, axis=1, keepdims=True) + 10 ** -6)
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(std_data, ind)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
     def picking_to_mask(self, src, dst, src_traces='raw'):
-        """Convert picking time to the mask.
+        """Convert picking time to the mask for TraceIndex.
 
         Parameters
         ----------
@@ -1166,18 +1170,26 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the mask corresponds to the picking.
         """
-        data = np.concatenate(np.vstack(getattr(self, src)))
+        data = np.concatenate(getattr(self, src))
+
         samples = self.meta[src_traces]['samples']
         tick = samples[1] - samples[0]
         data = np.around(data / tick).astype('int')
+        
         batch_size = data.shape[0]
-        trace_length = self.raw[0].shape[1]
+        trace_length = getattr(self, src_traces)[0].shape[1]
         ind = tuple(np.array(list(zip(range(batch_size), data))).T)
         ind[1][ind[1] < 0] = 0
         mask = np.zeros((batch_size, trace_length))
         mask[ind] = 1
         dst_data = np.cumsum(mask, axis=1)
-        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(dst_data, ind)
+        dst_data = np.array([np.squeeze(i) for i in dst_data] + [None])[:-1]
+        setattr(self, dst, dst_data)
         return self
 
     @action

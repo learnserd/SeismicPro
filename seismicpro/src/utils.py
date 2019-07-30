@@ -769,7 +769,8 @@ def massive_block(data):
     distance = minus_one[:, 1] - plus_one[:, 1]
     mask = minus_one[:, 0]
 
-    sort = np.lexsort((distance, mask))
+    idxs = np.argsort(distance, kind="stable")
+    sort = idxs[np.argsort(mask[idxs], kind="stable")]
     ind = [0] * mask[0]
     for i in range(len(sort[:-1])):
         diff = mask[i +1] - mask[i]
