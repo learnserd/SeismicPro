@@ -11,8 +11,8 @@ class UnetAtt(UNet):
         main_config = self.config['main_config']
         attn_config = self.config['attn_config']
         raw, offset = inputs
-        main = super().body(raw, name='main', **main_config)
-        att = super().body(raw, name='attention', **attn_config)
+        main = super().body(raw, name='main', **main_config) # pylint: disable=not-a-mapping
+        att = super().body(raw, name='attention', **attn_config) # pylint: disable=not-a-mapping
         return main, att, raw, offset
 
     def head(self, inputs, *args, **kwargs):

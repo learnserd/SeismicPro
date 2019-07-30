@@ -12,7 +12,8 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, calculate_corrected_field, massive_block
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_corrected_field, massive_block
+from .file_utils import write_segy_file
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
 
@@ -192,30 +193,30 @@ class SeismicBatch(Batch):
             all_errors = [error for error in mask if isinstance(error, Exception)]
             print(all_errors)
             raise ValueError(all_errors)
-        else:
-            _ = args
-            src = kwargs.get('src', None)
-            src = (src, ) if isinstance(src, str) else src
 
-            mask = np.concatenate((np.array(mask)))
-            new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
-            new_index = new_idf.index.unique()
+        _ = args
+        src = kwargs.get('src', None)
+        src = (src, ) if isinstance(src, str) else src
 
-            batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
-                                                      index_name=self.index.name)
+        mask = np.concatenate((np.array(mask)))
+        new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
+        new_index = new_idf.index.unique()
 
-            batch = type(self)(batch_index)
-            batch.add_components(self.components)
-            batch.meta = self.meta
+        batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
+                                                  index_name=self.index.name)
 
-            for comp in batch.components:
-                setattr(batch, comp, np.array([None] * len(batch.index)))
+        batch = type(self)(batch_index)
+        batch.add_components(self.components)
+        batch.meta = self.meta
 
-            for i, index in enumerate(new_index):
-                for isrc in batch.components:
-                    pos = self.get_pos(None, isrc, index)
-                    new_data = getattr(self, isrc)[pos][mask[pos]]
-                    getattr(batch, isrc)[i] = new_data
+        for comp in batch.components:
+            setattr(batch, comp, np.array([None] * len(batch.index)))
+
+        for i, index in enumerate(new_index):
+            for isrc in batch.components:
+                pos = self.get_pos(None, isrc, index)
+                new_data = getattr(self, isrc)[pos][mask[pos]]
+                getattr(batch, isrc)[i] = new_data
         return batch
 
     def trace_headers(self, header, flatten=False):
@@ -375,7 +376,7 @@ class SeismicBatch(Batch):
         except ValueError as err:
             if length_alignment is None:
                 raise ValueError(str(err) + '\nTry to set length_alingment to \'max\' or \'min\'')
-            elif length_alignment == 'min':
+            if length_alignment == 'min':
                 nsamples = min([len(t) for t in data])
             elif length_alignment == 'max':
                 nsamples = max([len(t) for t in data])
@@ -1175,7 +1176,7 @@ class SeismicBatch(Batch):
         samples = self.meta[src_traces]['samples']
         tick = samples[1] - samples[0]
         data = np.around(data / tick).astype('int')
-        
+
         batch_size = data.shape[0]
         trace_length = getattr(self, src_traces)[0].shape[1]
         ind = tuple(np.array(list(zip(range(batch_size), data))).T)

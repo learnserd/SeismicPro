@@ -1,7 +1,7 @@
 """Metrics for Seismic procesing tasks."""
 import numpy as np
 
-from ..batchflow.models.metrics import Metrics
+from ..batchflow.batchflow.models.metrics import Metrics
 
 class FieldMetrics(Metrics):
     """Class for seismic field record metrics.
