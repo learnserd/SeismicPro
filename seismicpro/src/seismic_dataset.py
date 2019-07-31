@@ -1,28 +1,52 @@
 """File consists seismic dataset."""
-import segyio
 import numpy as np
 from scipy.optimize import minimize
 
-from ..batchflow import Dataset, NamedExpression
-from ..src import FieldIndex, SegyFilesIndex
+from ..batchflow import Dataset
+from ..src.seismic_index import FieldIndex
 
 class SeismicDataset(Dataset):
-    """Dataset for seismic data."""
-    def _load(self, index, src, tslice=None):
-        trace_seq = self.index.get_df([index])[('TRACE_SEQUENCE_FILE', src)]
-        if tslice is None:
-            tslice = slice(None)
-        path = SegyFilesIndex(self.index, name=src).index[0]
-        with segyio.open(path, strict=False) as segyfile:
-            traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
-                                    np.atleast_1d(trace_seq).astype(int)])
-            samples = segyfile.samples[tslice]
-        return traces, samples
+    """Dataset for seismic data.
+    Attributes
+    ----------
+    correction_params : array of lenght 2
+        Contains powers of speed and time for spherical divergence correctoin.
+    """
+
+    def __init__(self, index, *args, **kwargs):
+        super().__init__(index, *args, **kwargs)
+        self.correction_params = None
+
+    def load_batch(self, index, src, tslice=None):
+        """ Loading one element from segy file by ```index```.
+
+        Parameters
+        ----------
+        index : int
+            Index of loaded data in segy file.
+        src : str
+            The batch components to get the data from.
+        tslice : slice
+            Lenght of loaded field.
+
+        Returns
+        -------
+            : array
+            Loaded data.
+            : array
+            The frequency at which the measurement data is taken.
+        """
+        sub_ix = self.index.create_subset(np.array([index], dtype=int))
+        batch = type(self)(sub_ix, self.batch_class).next_batch(1)
+        batch = batch.load(src=src, fmt='segy', components=('raw'), tslice=tslice)
+        data = batch.raw[0]
+        samples = batch.meta['raw']['samples']
+        return data, samples
 
     def find_correctoin_parameters(self, src, speed, time=None, loss=None, started_point=None,
-                                   method='Powell', save_params_to=None, bounds=None, tslice=None):
-        """
-        Finding an optimal parameter for correction of spherical divergence.
+                                   method='Powell', bounds=None, tslice=None):
+        """ Finding an optimal parameter for correction of spherical divergence. Finding parameters
+        will be saved to dataset's attribute named ```correction_params```.
 
         Parameters
         ----------
@@ -38,8 +62,6 @@ class SeismicDataset(Dataset):
             Started values for $v_{pow}$ and $t_{pow}$.
         method : str, optional, default ```Powell```
             Minimization method, see ```scipy.optimize.minimize```.
-        save_params_to : None or str, default None
-            container to save parameters.
         bounds : int, default ((0, 5), (0, 5))
             Optimization bounds.
         tslice : slice, optional
@@ -47,10 +69,16 @@ class SeismicDataset(Dataset):
 
         Returns
         -------
-            : SeismicDataset
+            : array
+            Coefficients for speed and time.
+
+        Note
+        ----
+        If you want to save parameters to pipeline variable use save_to argument with following
+        syntax: ```save_to=V('variable name')```.
         """
         ix = self.indices[0]
-        field, samples = self._load(ix, src, tslice)
+        field, samples = self.load_batch(ix, src, tslice)
 
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
 
@@ -63,10 +91,5 @@ class SeismicDataset(Dataset):
 
         args = (field, time, speed)
         func = minimize(loss, started_point, args=args, method=method, bounds=bounds)
-
-        v_pow, t_pow = func.x
-        if isinstance(save_params_to, NamedExpression):
-            save_params_to.assign((v_pow, t_pow))
-        else:
-            save_params_to[0] = (v_pow, t_pow)
-        return self
+        self.correction_params = func.x
+        return func.x

@@ -10,6 +10,7 @@ import segyio
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
+from .seismic_dataset import SeismicDataset
 
 from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_corrected_field, massive_block
 from .file_utils import write_segy_file
@@ -153,7 +154,6 @@ class SeismicBatch(Batch):
         super().__init__(index, *args, preloaded=preloaded, **kwargs)
         if preloaded is None:
             self.meta = dict()
-        self.global_params = None
 
     def _init_component(self, *args, dst, **kwargs):
         """Create and preallocate a new attribute with the name ``dst`` if it
@@ -810,11 +810,12 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def correct_spherical_divergence(self, src, dst, speed, time=None, v_pow=None, t_pow=None, parameters=None):
+    def correct_spherical_divergence(self, src, dst, speed, time=None, params=None):
         """Correction of spherical divergence with given parameers or with optimal parameters. There are two
-        ways to use this funcion. The simplest way is to determine v_pow and t_pow then correction will be made
+        ways to use this funcion. The simplest way is to determine parameters then correction will be made
         with given parameters. Another approach is to find the parameters by ```find_correctoin_parameters``` function
-        from SeismicDataset class for full dataset.
+        from SeismicDataset class for full dataset. In this way, optimal parameters will contain in dataset's
+        attribute ````correction_params```. To use it, argument ```params``` should be None.
 
         Parameters
         ----------
@@ -826,12 +827,8 @@ class SeismicBatch(Batch):
             Wave propagation speed depending on the depth.
         time : array, optimal
            Trace time values. The default is self.meta[src]['samples'].
-        v_pow : float or int, optional
-            Speed's power.
-        t_pow : float or int, optional
-            Time's power.
-        parameters : array or V
-            containter with optimal parameters.
+        params : array, optimal
+            Containter with parameters in the following order: [v_pow, t_pow].
 
         Returns
         -------
@@ -840,28 +837,30 @@ class SeismicBatch(Batch):
 
         Note
         ----
-        Works properly only with FieldIndex.
+        Works properly only with FieldIndex. If you use this function with own dataset instance, you should use
+        ```params```.
 
         Raises
         ------
         ValueError : If Index is not FieldIndex.
-        ValueError : If ```v_pow``` , ```t_pow``` and ```parameters``` are Nones.
-        ValueError : If one of ```v_pow``` or ```t_pow``` is None while another is not None.
+        ValueError : If dataset is not SeismicDataset and ```params``` is None.
+        ValueError : If params and correction_params attibute are None.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
 
+        if params is None:
+            if not isinstance(self.pipeline.dataset, SeismicDataset):
+                raise ValueError("```params``` can't be None if type(dataset) not SeismicDataset.")
+            else:
+                params = getattr(self.pipeline.dataset, 'correction_params', None)
+                if params is None:
+                    raise ValueError("params can't be None if correction_params attribute from SeismicDataset is None.")
+
         time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
         speed = np.array(speed, dtype=int)[::step]
-
-        if v_pow is None and t_pow is None:
-            if parameters is None:
-                ValueError("v_pow and t_pow can't be None if parametes None.")
-            v_pow, t_pow = parameters
-
-        if None in [v_pow, t_pow]:
-            raise ValueError("```pow_t``` or ```pow_v``` can't be None while another is not None ")
+        v_pow, t_pow = params
 
         self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
         return self
