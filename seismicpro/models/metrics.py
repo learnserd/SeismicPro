@@ -2,6 +2,7 @@
 import numpy as np
 
 from ..batchflow.batchflow.models.metrics import Metrics
+from ..src import measure_gain_amplitude
 
 class FieldMetrics(Metrics):
     """Class for seismic field record metrics.
@@ -69,4 +70,8 @@ class PickingMetrics(Metrics):
         """Accuracy metric in case the task is being interpreted as classification."""
         abs_diff = np.abs(self.targets - self.predictions)
         return 100 * len(abs_diff[abs_diff < self.gap]) / len(abs_diff)
-    
+
+def calc_derivative_diff(ampl_diff, window=51):
+    """Derivative difference metric."""
+    result = measure_gain_amplitude(ampl_diff, window)
+    return np.median(np.abs(np.gradient(result)))
