@@ -44,8 +44,8 @@ class SeismicDataset(Dataset):
         samples = batch.meta['raw']['samples']
         return data, samples
 
-    def find_correctoin_parameters(self, src, speed, time=None, loss=None, started_point=None,
-                                   method='Powell', bounds=None, tslice=None):
+    def find_correctoin_parameters(self, src, speed, loss, time=None, started_point=None,
+                                   method='Powell', bounds=None, tslice=None, **kwargs):
         """ Finding an optimal parameter for correction of spherical divergence. Finding parameters
         will be saved to dataset's attribute named ```correction_params```.
 
@@ -55,12 +55,13 @@ class SeismicDataset(Dataset):
             The batch components to get the data from.
         speed : array
             Wave propagation speed depending on the depth.
-        time : array, optional
-           Trace time values. The default is self.meta[src]['samples'].
         loss : callable
             Function to minimize.
+        time : array, optional
+           Trace time values. The default is self.meta[src]['samples'].
         started_point : array of 2
             Started values for $v_{pow}$ and $t_{pow}$.
+            Default is $v_{pow}=2$ and $t_{pow}=1$.
         method : str, optional, default ```Powell```
             Minimization method, see ```scipy.optimize.minimize```.
         bounds : sequence, optional
@@ -83,15 +84,15 @@ class SeismicDataset(Dataset):
         field, samples = self.load_batch(ix, src, tslice)
 
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
-
+        started_point = (2, 1) if started_point is None else started_point
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
 
         time = samples if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
         speed = np.array(speed, dtype=int)[::step]
-
         args = (field, time, speed)
-        func = minimize(loss, started_point, args=args, method=method, bounds=bounds)
+
+        func = minimize(loss, started_point, args=args, method=method, bounds=bounds, **kwargs)
         self.correction_params = func.x
         return func.x
