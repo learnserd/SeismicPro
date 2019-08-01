@@ -32,7 +32,8 @@ A set of IPython Notebooks introduces step-by-step the SeismicPro framework:
 
 1. [Index](tutorials/1.Index.ipynb) explains how to index data with respect to traces, field records, shot points etc.
 2. [Batch](tutorials/2.Batch.ipynb) shows how to load data, perform various actions with seismic traces and visualize them.
-3. [Models](tutorials/3.Models.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
+3. [Dataset](tutorials/3.Dataset.ipynb) describes how to calculate some parameters for all dataset.
+4. [Models](tutorials/4.Models.ipynb) notebook shows how to build and run pipelines for model training, inference and evaluation with respect to ground-roll noise attenuation problem.
 
 
 ## File formats
