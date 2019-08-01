@@ -1,24 +1,25 @@
-"""File consists seismic dataset."""
+"""File contains seismic dataset."""
 import numpy as np
 from scipy.optimize import minimize
 
-from ..batchflow import Dataset
+from ..batchflow import Dataset, Batch
 from ..src.seismic_index import FieldIndex
+
 
 class SeismicDataset(Dataset):
     """Dataset for seismic data.
     Attributes
     ----------
     correction_params : array of lenght 2
-        Contains powers of speed and time for spherical divergence correctoin.
+        Contains powers of speed and time for spherical divergence correction.
     """
 
-    def __init__(self, index, *args, **kwargs):
-        super().__init__(index, *args, **kwargs)
+    def __init__(self, index, batch_class=Batch, preloaded=None, *args, **kwargs):
+        super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
         self.correction_params = None
 
     def load_batch(self, index, src, tslice=None):
-        """ Loading one element from segy file by ```index```.
+        """ Loading one element and samples from segy file by ```index```.
 
         Parameters
         ----------
@@ -54,7 +55,7 @@ class SeismicDataset(Dataset):
             The batch components to get the data from.
         speed : array
             Wave propagation speed depending on the depth.
-        time : array, optimal
+        time : array, optional
            Trace time values. The default is self.meta[src]['samples'].
         loss : callable
             Function to minimize.
@@ -62,8 +63,9 @@ class SeismicDataset(Dataset):
             Started values for $v_{pow}$ and $t_{pow}$.
         method : str, optional, default ```Powell```
             Minimization method, see ```scipy.optimize.minimize```.
-        bounds : int, default ((0, 5), (0, 5))
-            Optimization bounds.
+        bounds : sequence, optional
+            Sequence of (min, max) optimization bounds for each parameter. None is used to specify no bound.
+            Default is ((0, 5), (0, 5)).
         tslice : slice, optional
             Lenght of loaded field.
 
