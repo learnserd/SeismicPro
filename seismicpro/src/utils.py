@@ -781,5 +781,4 @@ def massive_block(data):
             ind.append(plus_one[:, 1][sort[i]])
     ind.append(plus_one[:, 1][sort[-1]])
     ind.extend([0] * (arr.shape[0] - mask[-1] - 1))
-    ind = [[i] for i in ind]
     return ind

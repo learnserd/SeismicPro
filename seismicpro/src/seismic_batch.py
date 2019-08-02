@@ -498,7 +498,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.concatenate(getattr(self, src))
+        data = getattr(self, src).astype('int')
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -1064,7 +1064,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def normalize_traces(self, src, dst):
+    def standartize(self, src, dst):
         """Normalize traces to zero mean and unit variance.
 
         Parameters
