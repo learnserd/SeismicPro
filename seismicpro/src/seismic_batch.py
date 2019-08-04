@@ -10,9 +10,8 @@ import segyio
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
-from .seismic_dataset import SeismicDataset
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_corrected_field, massive_block
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block
 from .file_utils import write_segy_file
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
@@ -813,9 +812,9 @@ class SeismicBatch(Batch):
     def correct_spherical_divergence(self, src, dst, speed, time=None, params=None):
         """Correction of spherical divergence with given parameers or with optimal parameters. There are two
         ways to use this funcion. The simplest way is to determine parameters then correction will be made
-        with given parameters. Another approach is to find the parameters by ```find_correctoin_parameters``` function
+        with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
         from SeismicDataset class for full dataset. In this way, optimal parameters will contain in dataset's
-        attribute ````correction_params```. To use it, argument ```params``` should be None.
+        attribute ````sdc_params```. To use it, argument ```params``` should be None.
 
         Parameters
         ----------
@@ -843,19 +842,15 @@ class SeismicBatch(Batch):
         Raises
         ------
         ValueError : If Index is not FieldIndex.
-        ValueError : If dataset is not SeismicDataset and ```params``` is None.
-        ValueError : If params and correction_params attibute are None.
+        ValueError : If params and sdc_params attibute are None.
         """
         if not isinstance(self.index, FieldIndex):
-            raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
         if params is None:
-            if not isinstance(self.pipeline.dataset, SeismicDataset):
-                raise ValueError("```params``` can't be None if type(dataset) not SeismicDataset.")
-            else:
-                params = getattr(self.pipeline.dataset, 'correction_params', None)
-                if params is None:
-                    raise ValueError("params can't be None if correction_params attribute from SeismicDataset is None.")
+            params = getattr(self.pipeline.dataset, 'sdc_params', None)
+            if params is None:
+                raise ValueError("params can't be None if sdc_params attribute from SeismicDataset is None.")
 
         time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
@@ -871,7 +866,7 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        correct_field = calculate_corrected_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
+        correct_field = calculate_sdc_for_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
 
         getattr(self, dst)[pos] = correct_field
         return self

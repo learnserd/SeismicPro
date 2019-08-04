@@ -657,7 +657,7 @@ def calc_sdc(ix, time, speed, v_pow, t_pow):
         return 1.
     return correction
 
-def calculate_corrected_field(field, time, speed, v_pow=2, t_pow=1):
+def calculate_sdc_for_field(field, time, speed, v_pow=2, t_pow=1):
     """ Correction of spherical divergence.
 
     Parameters
@@ -714,7 +714,7 @@ def measure_gain_amplitude(field, window):
     return result
 
 def calculate_sdc_quality(parameters, field, time, speed, window=51):
-    """Calculate the quality of found parameters.
+    """Calculate the quality of estimated parameters.
     The qualiry caluclated as the median of the first order gradient module.
 
     Parameters
@@ -737,8 +737,8 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """
 
     v_pow, t_pow = parameters
-    new_field = calculate_corrected_field(field, time=time, speed=speed,
-                                          v_pow=v_pow, t_pow=t_pow)
+    new_field = calculate_sdc_for_field(field, time=time, speed=speed,
+                                        v_pow=v_pow, t_pow=t_pow)
 
     result = measure_gain_amplitude(new_field, window)
     return np.median(np.abs(np.gradient(result)))

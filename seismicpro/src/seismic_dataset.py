@@ -2,52 +2,27 @@
 import numpy as np
 from scipy.optimize import minimize
 
-from ..batchflow import Dataset, Batch
+from ..batchflow import Dataset
 from ..src.seismic_index import FieldIndex
+from ..src.seismic_batch import SeismicBatch
 
 
 class SeismicDataset(Dataset):
     """Dataset for seismic data.
     Attributes
     ----------
-    correction_params : array of lenght 2
+    sdc_params : array of ints or float with length 2
         Contains powers of speed and time for spherical divergence correction.
     """
 
-    def __init__(self, index, batch_class=Batch, preloaded=None, *args, **kwargs):
+    def __init__(self, index, batch_class=SeismicBatch, preloaded=None, *args, **kwargs):
         super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
-        self.correction_params = None
+        self.sdc_params = None
 
-    def load_batch(self, index, src, tslice=None):
-        """ Loading one element and samples from segy file by ```index```.
-
-        Parameters
-        ----------
-        index : int
-            Index of loaded data in segy file.
-        src : str
-            The batch components to get the data from.
-        tslice : slice
-            Lenght of loaded field.
-
-        Returns
-        -------
-            : array
-            Loaded data.
-            : array
-            The frequency at which the measurement data is taken.
-        """
-        sub_ix = self.index.create_subset(np.array([index], dtype=int))
-        batch = type(self)(sub_ix, self.batch_class).next_batch(1)
-        batch = batch.load(src=src, fmt='segy', components=('raw'), tslice=tslice)
-        data = batch.raw[0]
-        samples = batch.meta['raw']['samples']
-        return data, samples
-
-    def find_correctoin_parameters(self, src, speed, loss, time=None, started_point=None,
-                                   method='Powell', bounds=None, tslice=None, **kwargs):
-        """ Finding an optimal parameter for correction of spherical divergence. Finding parameters
-        will be saved to dataset's attribute named ```correction_params```.
+    def find_sdc_params(self, src, speed, loss, time=None, started_point=None,
+                        method='Powell', bounds=None, tslice=None, **kwargs):
+        """ Finding an optimal parameters for correction of spherical divergence. Finding parameters
+        will be saved to dataset's attribute named ```sdc_params```.
 
         Parameters
         ----------
@@ -80,19 +55,21 @@ class SeismicDataset(Dataset):
         If you want to save parameters to pipeline variable use save_to argument with following
         syntax: ```save_to=V('variable name')```.
         """
-        ix = self.indices[0]
-        field, samples = self.load_batch(ix, src, tslice)
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        batch = self.create_batch(self.indices[:1]).load(src=src, components='raw', fmt='segy', tslice=tslice)
+        field = batch.raw[0]
+        samples = batch.meta['raw']['samples']
 
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
         started_point = (2, 1) if started_point is None else started_point
-        if not isinstance(self.index, FieldIndex):
-            raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
 
         time = samples if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
         speed = np.array(speed, dtype=int)[::step]
-        args = (field, time, speed)
+        args = field, time, speed
 
         func = minimize(loss, started_point, args=args, method=method, bounds=bounds, **kwargs)
-        self.correction_params = func.x
+        self.sdc_params = func.x
         return func.x
