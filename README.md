@@ -57,14 +57,14 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 |Problem|Number of datasets|Number of fields|
 |---|---|---|
-|[Ground-roll attenuation](datasets/ground-roll_attenuation.ipynb)| 3 | 551/991/628 
-|[First-break picking](datasets/first_break_picking.ipynb)| 3 | 1001/1001/460
+|[Ground-roll attenuation](datasets/ground-roll_attenuation.ipynb)| 3 | 551, 991, 628 
+|[First-break picking](datasets/first_break_picking.ipynb)| 3 | 1001, 1001, 460
 |[Spherical divergence correction](datasets/spherical_divergence_correction.ipynb) | 1 | 10
 
 
 ## Models
 
-|Model|Architecture|Dataset|Metrics|
+|Model|Architecture|Metrics|
 |---|---|---|---|
 |[Ground-roll attenuation](models/Ground-roll_attenuation/Unet_1D_model/model_description.ipynb)| U-Net 1D| 0.004 MAE for dataset 1
 |[Ground-roll attenuation](models/Ground-roll_attenuation/Attention_model/model_description.ipynb)| U-Net Attention 1D| 0.007 MAE for dataset 1
