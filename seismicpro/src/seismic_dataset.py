@@ -19,22 +19,22 @@ class SeismicDataset(Dataset):
         super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
         self.sdc_params = None
 
-    def find_sdc_params(self, src, speed, loss, time=None, started_point=None,
+    def find_sdc_params(self, components, speed, loss, time=None, initial_point=None,
                         method='Powell', bounds=None, tslice=None, **kwargs):
         """ Finding an optimal parameters for correction of spherical divergence. Finding parameters
         will be saved to dataset's attribute named ```sdc_params```.
 
         Parameters
         ----------
-        src : str
-            The batch components to get the data from.
+        components : str or array-like, optional
+            Components to load.
         speed : array
             Wave propagation speed depending on the depth.
         loss : callable
             Function to minimize.
         time : array, optional
            Trace time values. The default is self.meta[src]['samples'].
-        started_point : array of 2
+        initial_point : array of 2
             Started values for $v_{pow}$ and $t_{pow}$.
             Default is $v_{pow}=2$ and $t_{pow}=1$.
         method : str, optional, default ```Powell```
@@ -58,18 +58,18 @@ class SeismicDataset(Dataset):
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
-        batch = self.create_batch(self.indices[:1]).load(src=src, components='raw', fmt='segy', tslice=tslice)
+        batch = self.create_batch(self.indices[:1]).load(components=components, fmt='segy', tslice=tslice)
         field = batch.raw[0]
         samples = batch.meta['raw']['samples']
 
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
-        started_point = (2, 1) if started_point is None else started_point
+        initial_point = (2, 1) if initial_point is None else initial_point
 
         time = samples if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
         speed = np.array(speed, dtype=int)[::step]
         args = field, time, speed
 
-        func = minimize(loss, started_point, args=args, method=method, bounds=bounds, **kwargs)
+        func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         self.sdc_params = func.x
         return func.x
