@@ -8,8 +8,8 @@ class UnetAtt(UNet):
     """Class for Unet Attention model."""
     def body(self, inputs, *args, **kwargs):
         _ = args, kwargs
-        main_config = self.config['main_config']
-        attn_config = self.config['attn_config']
+        main_config = self.config['main']
+        attn_config = self.config['attn']
         raw, offset = inputs
         main = super().body(raw, name='main', **main_config) # pylint: disable=not-a-mapping
         att = super().body(raw, name='attention', **attn_config) # pylint: disable=not-a-mapping
