@@ -43,7 +43,7 @@ class SeismicDataset(Dataset):
         method : str, optional, default ```Powell```
             Minimization method, see ```scipy.optimize.minimize```.
         bounds : sequence, optional
-            Sequence of (min, max) optimization bounds for each parameter. 
+            Sequence of (min, max) optimization bounds for each parameter.
             If `None` defaults to ((0, 5), (0, 5)).
         tslice : slice, optional
             Lenght of loaded field.
