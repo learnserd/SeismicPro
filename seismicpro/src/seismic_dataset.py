@@ -21,8 +21,7 @@ class SeismicDataset(Dataset):
 
     def find_sdc_params(self, components, speed, loss, indices=None, time=None, initial_point=None,
                         method='Powell', bounds=None, tslice=None, **kwargs):
-        """ Finding an optimal parameters for correction of spherical divergence. Finding parameters
-        will be saved to dataset's attribute named ```sdc_params```.
+        """ Finding an optimal parameters for correction of spherical divergence.
 
         Parameters
         ----------
@@ -55,7 +54,8 @@ class SeismicDataset(Dataset):
 
         Note
         ----
-        To save parameters as SeismicDataset attribute use ```save_to=D('sdc_params')```.
+        To save parameters as SeismicDataset attribute use ```save_to=D('sdc_params')``` (works only
+        in pipeline).
         If you want to save parameters to pipeline variable use save_to argument with following
         syntax: ```save_to=V('variable name')```.
         """
