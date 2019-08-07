@@ -1,18 +1,36 @@
 """ UnetAttention model """
 import tensorflow as tf
 
-from ..batchflow.batchflow.models.tf import UNet
+from ..batchflow.batchflow.models.tf import EncoderDecoder
 from ..batchflow.batchflow.models.tf.layers import conv_block
 
-class UnetAtt(UNet):
+class UnetAtt(EncoderDecoder):
     """Class for Unet Attention model."""
+    
+    @classmethod
+    def default_config(cls):
+        config = super().default_config()
+
+        body_config = config['body']
+        
+        config['body'] = None
+        config['body/main'] = body_config
+        config['body/attn'] = body_config
+
+        return config
+    
+    def initial_block(self, inputs, *args, **kwargs):
+        return inputs
+
     def body(self, inputs, *args, **kwargs):
-        _ = args, kwargs
-        main_config = self.config['main']
-        attn_config = self.config['attn']
+        _ = args
         raw, offset = inputs
-        main = super().body(raw, name='main', **main_config) # pylint: disable=not-a-mapping
-        att = super().body(raw, name='attention', **attn_config) # pylint: disable=not-a-mapping
+        
+        main_config = kwargs.pop('main')
+        attn_config = kwargs.pop('attn')
+        
+        main = super().body(raw, name='main', **{**kwargs, **main_config}) # pylint: disable=not-a-mapping
+        att = super().body(raw, name='attention', **{**kwargs, **attn_config}) # pylint: disable=not-a-mapping
         return main, att, raw, offset
 
     def head(self, inputs, *args, **kwargs):
