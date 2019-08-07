@@ -784,7 +784,7 @@ class SeismicBatch(Batch):
             raise ValueError('Sample time should be specified or by self.meta[src] or by sample_time.')
 
         if len(speed_conc) != field.shape[1]:
-            raise ValueError('Speed must have shape equal to trace lenght, not {} but {}'.format(speed_conc.shape[0],
+            raise ValueError('Speed must have shape equal to trace length, not {} but {}'.format(speed_conc.shape[0],
                                                                                                  field.shape[1]))
         t_zero = (np.arange(1, field.shape[1]+1)*sample_time)/1000
         time_range = np.arange(0, field.shape[1])
@@ -809,12 +809,11 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def correct_spherical_divergence(self, src, dst, speed, time=None, params=None):
+    def correct_spherical_divergence(self, src, dst, speed, params, time=None):
         """Correction of spherical divergence with given parameers or with optimal parameters. There are two
         ways to use this funcion. The simplest way is to determine parameters then correction will be made
         with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
-        from SeismicDataset class for full dataset. In this way, optimal parameters will contain in dataset's
-        attribute ````sdc_params```. To use it, argument ```params``` should be None.
+        from SeismicDataset class for full dataset.
 
         Parameters
         ----------
@@ -824,10 +823,10 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         speed : array
             Wave propagation speed depending on the depth.
+        params : array of floats(or ints) with length 2
+            Containter with parameters in the following order: [v_pow, t_pow].
         time : array, optimal
            Trace time values. The default is self.meta[src]['samples'].
-        params : array, optimal
-            Containter with parameters in the following order: [v_pow, t_pow].
 
         Returns
         -------
@@ -836,21 +835,18 @@ class SeismicBatch(Batch):
 
         Note
         ----
-        Works properly only with FieldIndex. If you use this function with own dataset instance, you should use
-        ```params```.
+        Works properly only with FieldIndex.
 
         Raises
         ------
         ValueError : If Index is not FieldIndex.
-        ValueError : If params and sdc_params attibute are None.
+        ValueError : If length of ```params``` not equal to 2.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
-        if params is None:
-            params = getattr(self.pipeline.dataset, 'sdc_params', None)
-            if params is None:
-                raise ValueError("params can't be None if sdc_params attribute from SeismicDataset is None.")
+        if len(params) != 2:
+            raise ValueError("The length of the ```params``` must be equal to two, not {}.".format(len(params)))
 
         time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
@@ -1060,7 +1056,7 @@ class SeismicBatch(Batch):
 
     @action
     def standartize(self, src, dst):
-        """Normalize traces to zero mean and unit variance.
+        """Standartize traces to zero mean and unit variance.
 
         Parameters
         ----------

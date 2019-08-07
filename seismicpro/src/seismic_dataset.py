@@ -8,16 +8,10 @@ from ..src.seismic_batch import SeismicBatch
 
 
 class SeismicDataset(Dataset):
-    """Dataset for seismic data.
-    Attributes
-    ----------
-    sdc_params : array of ints or float with length 2
-        Contains powers of speed and time for spherical divergence correction.
-    """
+    """Dataset for seismic data."""
 
     def __init__(self, index, batch_class=SeismicBatch, preloaded=None, *args, **kwargs):
         super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
-        self.sdc_params = None
 
     def find_sdc_params(self, components, speed, loss, indices=None, time=None, initial_point=None,
                         method='Powell', bounds=None, tslice=None, **kwargs):
@@ -54,10 +48,10 @@ class SeismicDataset(Dataset):
 
         Note
         ----
-        To save parameters as SeismicDataset attribute use ```save_to=D('sdc_params')``` (works only
+        To save parameters as SeismicDataset attribute use ```save_to=D('attr_name')``` (works only
         in pipeline).
         If you want to save parameters to pipeline variable use save_to argument with following
-        syntax: ```save_to=V('variable name')```.
+        syntax: ```save_to=V('variable_name')```.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
