@@ -1212,43 +1212,35 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        speed : array
-            Wave propagation speed depending on the depth.
-        time : array, optimal
-           Trace time values. The default is self.meta[src]['samples'].
         params : array, optimal
-            Containter with parameters in the following order: [v_pow, t_pow].
+            Containter with parameters for equalization.
+        record_id : str, optional
+            Column in index that indicates different records.
 
         Returns
         -------
             : SeismicBatch
-            Batch of fields with corrected spherical divergence.
+            Batch of fields with equalized data.
 
         Note
         ----
-        Works properly only with FieldIndex. If you use this function with own dataset instance, you should use
-        ```params```.
+        Works properly only with FieldIndex. 
 
         Raises
         ------
         ValueError : If Index is not FieldIndex.
-        ValueError : If params and sdc_params attibute are None.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
-
-        if params is None:
-            raise ValueError("params can't be None")
 
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
         if record_id is None:
             record_id = params['record_id']
-
-        percentile_5, percentile_95 = params[self.index._idf[record_id][index]]
-
-        equalized_field = (field - percentile_5 - 1) / (percentile_95 - percentile_5 - 1)
+            
+        factor = params[self.index._idf[record_id][index].values[0]]
+        equalized_field = field / factor
 
         getattr(self, src)[pos] = equalized_field
         return self

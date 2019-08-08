@@ -74,23 +74,26 @@ class SeismicDataset(Dataset):
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
 
-    def find_equalization_params(self, component, batch_size=1, record_id='fnum'):
+    def find_equalization_params(self, component, batch_size=1, record_id='fnum', p=0):
         """ Calculate parameters for dataset equalization.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
         records = np.unique(self.index._idf[record_id])
-        params = dict(zip(np.unique(records), [[] for _ in range(records)]))
-        for batch in self.gen_batch(batch_size):
+        params = dict(zip(records, [[] for _ in records]))
+        
+        for batch in self.gen_batch(batch_size, n_epochs=1):
             batch = batch.load(components=component, fmt='segy')
             record = np.unique(batch.index._idf[record_id])
+            if len(record) == 1:
+                record = record[0]
+            else:
+                raise ValueError('Field {} contains more than one record!'.format(batch.index.indices[0]))
             params[record].append(getattr(batch, component)[0].reshape(-1))
 
-        for record, values in params:
+        for record, values in params.items():
             values = np.concatenate(values)
-            percentile_5, percentile_95 = np.percentile(values, 0.05), np.percentile(values, 0.95)
-            params[record] = percentile_5, percentile_95
+            params[record] = np.percentile(np.abs(values), 90)
         params['record_id'] = record_id
-
         return params
