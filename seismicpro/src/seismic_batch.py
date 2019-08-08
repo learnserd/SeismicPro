@@ -813,8 +813,8 @@ class SeismicBatch(Batch):
         """Correction of spherical divergence with given parameers or with optimal parameters. There are two
         ways to use this funcion. The simplest way is to determine parameters then correction will be made
         with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
-        from SeismicDataset class for full dataset. In this way, optimal parameters will contain in dataset's
-        attribute ````sdc_params```. To use it, argument ```params``` should be None.
+        from `SeismicDataset` class. In this case, optimal parameters can be stored in in dataset's
+        attribute or pipeline variable and then passed to this action as `params` argument.
 
         Parameters
         ----------
@@ -848,9 +848,7 @@ class SeismicBatch(Batch):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
         if params is None:
-            params = getattr(self.pipeline.dataset, 'sdc_params', None)
-            if params is None:
-                raise ValueError("params can't be None if sdc_params attribute from SeismicDataset is None.")
+            raise ValueError("params can't be None")
 
         time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
         step = np.diff(time[:2])[0].astype(int)
@@ -1060,7 +1058,7 @@ class SeismicBatch(Batch):
 
     @action
     def standartize(self, src, dst):
-        """Normalize traces to zero mean and unit variance.
+        """Standardize traces to zero mean and unit variance.
 
         Parameters
         ----------
@@ -1072,7 +1070,7 @@ class SeismicBatch(Batch):
         Returns
         -------
         batch : SeismicBatch
-            Batch with the normalized traces.
+            Batch with the standardized traces.
         """
         data = np.concatenate(getattr(self, src))
         std_data = (data - np.mean(data, axis=1, keepdims=True)) / (np.std(data, axis=1, keepdims=True) + 10 ** -6)
@@ -1201,4 +1199,57 @@ class SeismicBatch(Batch):
         energy = np.gradient(energy, axis=1)
         picking = np.argmax(energy, axis=1)
         self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
+        return self
+
+    @action
+    @inbatch_parallel(init='_init_component')
+    def equalize(self, index, src, dst, params, record_id=None):
+        """ Equalize amplitudes of different recordings in dataset.
+
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        speed : array
+            Wave propagation speed depending on the depth.
+        time : array, optimal
+           Trace time values. The default is self.meta[src]['samples'].
+        params : array, optimal
+            Containter with parameters in the following order: [v_pow, t_pow].
+
+        Returns
+        -------
+            : SeismicBatch
+            Batch of fields with corrected spherical divergence.
+
+        Note
+        ----
+        Works properly only with FieldIndex. If you use this function with own dataset instance, you should use
+        ```params```.
+
+        Raises
+        ------
+        ValueError : If Index is not FieldIndex.
+        ValueError : If params and sdc_params attibute are None.
+        """
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        if params is None:
+            raise ValueError("params can't be None")
+
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        if record_id is None:
+            record_id = params['record_id']
+
+        percentile_5, percentile_95 = params[self.index._idf[record_id][index]]
+
+        equalized_field = (field - percentile_5 - 1) / (percentile_95 - percentile_5 - 1)
+
+        getattr(self, src)[pos] = equalized_field
         return self

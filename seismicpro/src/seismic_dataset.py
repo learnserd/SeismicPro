@@ -73,3 +73,24 @@ class SeismicDataset(Dataset):
         func = minimize(loss, started_point, args=args, method=method, bounds=bounds, **kwargs)
         self.sdc_params = func.x
         return func.x
+
+    def find_equalization_params(self, batch_size=1, record_id='fnum'):
+        """ Calculate parameters for dataset equalization.
+        """
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        records = np.unique(self.index._idf[record_id])
+        params = dict(zip(np.unique(records), [[] for _ in range(records)]))
+        for batch in self.gen_batch(batch_size):
+            batch = batch.load(components='raw', fmt='segy')
+            record = np.unique(batch.index._idf[record_id])
+            params[record].append(batch.raw[0].reshape(-1))
+
+        for record, values in params:
+            values = np.concatenate(values)
+            percentile_5, percentile_95 = np.percentile(values, 0.05), np.percentile(values, 0.95)
+            params[record] = percentile_5, percentile_95
+        params['record_id'] = record_id
+
+        return params
