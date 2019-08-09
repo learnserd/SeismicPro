@@ -22,7 +22,7 @@ class FieldMetrics(Metrics):
         """Mean absolute error metric."""
         return np.mean(abs(self.targets - self.predictions))
 
-    def corrcoef(self, reduce='mean', **kwargs):
+    def corr_coef(self, reduce='mean', **kwargs):
         """Correlation coeffitients."""
         a = self.targets
         b = self.predictions
