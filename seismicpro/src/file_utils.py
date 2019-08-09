@@ -1,4 +1,4 @@
-"""Uitls functions for files"""
+""" Utility functions for files """
 import segyio
 import numpy as np
 import pandas as pd

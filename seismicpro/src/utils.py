@@ -1,4 +1,4 @@
-"""Seismic batch tools."""
+""" Seismic batch tools """
 import functools
 import numpy as np
 import pandas as pd
@@ -715,7 +715,8 @@ def measure_gain_amplitude(field, window):
 
 def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """Calculate the quality of estimated parameters.
-    The qualiry caluclated as the median of the first order gradient module.
+
+    The quality caluclated as the median of absolute value of the first order derivative.
 
     Parameters
     ----------
