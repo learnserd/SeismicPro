@@ -27,7 +27,7 @@ def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs', time_frame_wid
        
 def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs', 
                             vmin=None, vmax=None, figsize=(15, 15), 
-                            time_frame_width=100, noverlap=None, window=('tukey', 0.25), n_cols=None):
+                            time_frame_width=100, noverlap=None, window=('tukey', 0.25), n_cols=None, fontsize=20):
     
     nx, ny = 1, len(modifications) 
     if n_cols is not None:
@@ -54,7 +54,8 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
         axs[i].imshow(mod.T, vmin=vmin, vmax=vmax, cmap='gray')
         rect = patches.Rectangle((0, 0), n_use_traces, n_ts, edgecolor='r', facecolor='none', lw=1)
         axs[i].add_patch(rect)
-        axs[i].set_title("{},\ndistances from original are:\n{}".format(description, '\n'.join(distances_strings)))
+        axs[i].set_title("{},\ndistances from original are:\n{}".format(description, '\n'.join(distances_strings)),
+                        fontsize=fontsize)
         
 def get_cv(arrs, q=0.95):
     return np.abs(np.quantile(np.stack(item for item in arrs), q))
