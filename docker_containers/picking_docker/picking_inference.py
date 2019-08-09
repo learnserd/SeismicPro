@@ -94,4 +94,3 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
 
 if __name__ == "__main__":
     sys.exit(make_prediction())
-    
