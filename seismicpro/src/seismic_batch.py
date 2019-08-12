@@ -497,7 +497,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = getattr(self, src).astype('int')
+        data = getattr(self, src).astype(int)
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -510,7 +510,7 @@ class SeismicBatch(Batch):
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df['timeOffset'] = data
+        df['timeOffset'] = data.astype(int)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
 
@@ -1160,7 +1160,7 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         eps: float, default: 3
             Stabilization constant that helps reduce the rapid fluctuations of energy function.
-        l: int, default: 12
+        length_win: int, default: 12
             The leading window length.
 
         Returns
