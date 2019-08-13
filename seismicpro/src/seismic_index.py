@@ -155,7 +155,8 @@ class TraceIndex(DatasetIndex):
         """Drop duplicated ('FieldRecord', 'TraceNumber') pairs."""
         subset = [('FieldRecord', ''), ('TraceNumber', '')]
         df = self.get_df().drop_duplicates(subset=subset, keep=keep)
-        df.set_index(self.name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
         return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
@@ -177,7 +178,8 @@ class TraceIndex(DatasetIndex):
         idf = self.get_df()
         xdf = x.get_df()
         df = idf.merge(xdf, **kwargs)
-        df.set_index(self.name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
         return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
