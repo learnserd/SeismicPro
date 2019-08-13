@@ -81,7 +81,7 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
                      .init_model('dynamic', UNet, 'my_model', config=config_predict)
                      .load(components='raw', fmt='segy', tslice=np.arange(trace_len))
                      .drop_zero_traces(num_zero=num_zero, src='raw')
-                     .standartize(src='raw', dst='raw')
+                     .standardize(src='raw', dst='raw')
                      .add_components(components='predictions')
                      .apply_transform_all(src='raw', dst='raw', func=lambda x: np.stack(x))
                      .predict_model('my_model', B('raw'), fetches='predictions',

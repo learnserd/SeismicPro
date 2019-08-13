@@ -1057,8 +1057,8 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def standartize(self, src, dst):
-        """Standartize traces to zero mean and unit variance.
+    def standardize(self, src, dst):
+        """standardize traces to zero mean and unit variance.
 
         Parameters
         ----------
