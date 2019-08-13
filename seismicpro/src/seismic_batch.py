@@ -821,7 +821,7 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-         speed : array
+        speed : array
             Wave propagation speed depending on the depth.
             Speed is measured in milliseconds.
         params : array of floats(or ints) with length 2
