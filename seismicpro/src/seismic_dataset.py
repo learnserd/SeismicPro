@@ -23,6 +23,7 @@ class SeismicDataset(Dataset):
             Component with fields.
         speed : array
             Wave propagation speed depending on the depth.
+            Speed is measured in milliseconds.
         loss : callable
             Function to minimize.
         indices : array-like, optonal
@@ -30,6 +31,7 @@ class SeismicDataset(Dataset):
             If `None`, defaults to first element of dataset.
         time : array, optional
            Trace time values. If `None` defaults to self.meta[src]['samples'].
+           Time measured in either in samples or in milliseconds.
         initial_point : array of 2
             Started values for $v_{pow}$ and $t_{pow}$.
             If None defaults to $v_{pow}=2$ and $t_{pow}=1$.

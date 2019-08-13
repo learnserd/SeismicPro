@@ -821,12 +821,14 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        speed : array
+         speed : array
             Wave propagation speed depending on the depth.
+            Speed is measured in milliseconds.
         params : array of floats(or ints) with length 2
             Containter with parameters in the following order: [v_pow, t_pow].
-        time : array, optimal
-           Trace time values. The default is self.meta[src]['samples'].
+        time : array, optional
+            Trace time values. If `None` defaults to self.meta[src]['samples'].
+            Time measured in either in samples or in milliseconds.
 
         Returns
         -------
