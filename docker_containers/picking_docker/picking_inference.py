@@ -29,9 +29,9 @@ def make_prediction():
     parser.add_argument('-bs', '--batch_size', type=int, help="The number of traces in \
                         the batch for inference stage.", default=1000)
     parser.add_argument('-ts', '--trace_len', type=int, help="The number of first samples \
-                        of the trace to load.", default=1000)
+                        of the trace to load.", default=750)
     parser.add_argument('-dvc', '--device', type=str or torch.device, help="The device for \
-                        inference. Can be 'cpu' or 'gpu'.", default='cpu')
+                        inference. Can be 'cpu' or 'gpu'.", default=torch.device('cpu'))
     args = parser.parse_args()
     path_raw = args.path_raw
     model = args.path_model
@@ -68,7 +68,7 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
 
     config_predict = {
         'build': False,
-        'load': {'path': path_model},
+        'load/path': path_model,
         'device': device
     }
 

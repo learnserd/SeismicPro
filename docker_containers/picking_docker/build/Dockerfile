@@ -3,7 +3,7 @@ MAINTAINER Roman Kh <rhudor@gmail.com>
 
 COPY . /notebooks/SeismicPro
 
-WORKDIR /notebooks/SeismicPro/models/First_break_picking/
+WORKDIR /notebooks/SeismicPro/docker_containers/picking_docker
 
 ENTRYPOINT ["python3", "picking_inference.py"]
 
