@@ -1,4 +1,4 @@
-"""Utils."""
+""" Utilily functions for visualization """
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -256,18 +256,15 @@ def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, *
         arrs = (arrs,)
 
     _, ax = plt.subplots(1, len(arrs), figsize=figsize)
-    if isinstance(ax, np.ndarray):
-        ax = ax.reshape(-1)
-    else:
-        ax = [ax]
+    ax = ax.reshape(-1) if isinstance(ax, np.ndarray) else [ax]
+
     for ix, sample in enumerate(arrs):
         result = measure_gain_amplitude(sample, window)
         ax[ix].plot(result, range(len(result)), **kwargs)
         if names is not None:
             ax[ix].set_title(names[ix])
-
         if xlim is None:
-            set_xlim = (max(result)-min(result)*1.1, max(result)+min(result)*1.1)
+            set_xlim = (max(result)-min(result)*.1, max(result)+min(result)*1.1)
         elif isinstance(xlim[0], (int, float)):
             set_xlim = xlim
         elif len(xlim) != len(arrs):
@@ -313,7 +310,7 @@ def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
 
     Returns
     -------
-    ...
+    Plots of seismorgams and trace statistics.
     """
     def rms_freq(x, rate):
         "Calculate rms frequency."
@@ -392,7 +389,7 @@ def show_research(df, layout=None, average_repetitions=False, log_scale=False, r
     if color is None:
         color = list(mcolors.CSS4_COLORS.keys())
     df_len = len(df['config'].unique())
-    replace = False if len(color) > df_len else True
+    replace = not len(color) > df_len
     chosen_colors = np.random.choice(color, replace=replace, size=df_len)
 
     _, ax = plt.subplots(1, len(layout), figsize=(9 * len(layout), 7))

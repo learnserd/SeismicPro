@@ -4,7 +4,6 @@ from textwrap import dedent
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
-from scipy.optimize import minimize
 import pywt
 import segyio
 
@@ -12,7 +11,8 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file, time_dep, massive_block
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block
+from .file_utils import write_segy_file
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
 
@@ -158,18 +158,13 @@ class SeismicBatch(Batch):
         """Create and preallocate a new attribute with the name ``dst`` if it
         does not exist and return batch indices."""
         _ = args, kwargs
-        if isinstance(dst, str):
-            dst = (dst,)
+        dst = (dst, ) if isinstance(dst, str) else dst
 
         for comp in dst:
-            if not hasattr(self, comp):
-                setattr(self, comp, np.array([None] * len(self.index)))
-
-            if comp not in self.meta:
-                self.meta[comp] = dict()
+            self.meta[comp] = self.meta[comp] if comp in self.meta else dict()
 
             if self.components is None or comp not in self.components:
-                self.add_components(comp)
+                self.add_components(comp, init=self.array_of_nones)
 
         return self.indices
 
@@ -196,33 +191,53 @@ class SeismicBatch(Batch):
             all_errors = [error for error in mask if isinstance(error, Exception)]
             print(all_errors)
             raise ValueError(all_errors)
-        else:
-            _ = args
-            src = kwargs.get('src', None)
 
-            if isinstance(src, str):
-                src = (src, )
+        _ = args
+        src = kwargs.get('src', None)
+        src = (src, ) if isinstance(src, str) else src
 
-            mask = np.concatenate((np.array(mask)))
-            new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
-            new_index = new_idf.index.unique()
+        mask = np.concatenate((np.array(mask)))
+        new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
+        new_index = new_idf.index.unique()
 
-            batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
-                                                      index_name=self.index.name)
+        batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
+                                                  index_name=self.index.name)
 
-            batch = type(self)(batch_index)
-            batch.add_components(self.components)
-            batch.meta = self.meta
+        batch = type(self)(batch_index)
+        batch.add_components(self.components)
+        batch.meta = self.meta
 
-            for comp in batch.components:
-                setattr(batch, comp, np.array([None] * len(batch.index)))
+        for comp in batch.components:
+            setattr(batch, comp, np.array([None] * len(batch.index)))
 
-            for i, index in enumerate(new_index):
-                for isrc in batch.components:
-                    pos = self.get_pos(None, isrc, index)
-                    new_data = getattr(self, isrc)[pos][mask[pos]]
-                    getattr(batch, isrc)[i] = new_data
+        for i, index in enumerate(new_index):
+            for isrc in batch.components:
+                pos = self.get_pos(None, isrc, index)
+                new_data = getattr(self, isrc)[pos][mask[pos]]
+                getattr(batch, isrc)[i] = new_data
         return batch
+
+    def trace_headers(self, header, flatten=False):
+        """Get trace heades.
+
+        Parameters
+        ----------
+        header : string
+            Header name.
+        flatten : bool
+            If False, array of headers will be splitted according to batch item sizes.
+            If True, return a flattened array. Dafault to False.
+
+        Returns
+        -------
+        arr : ndarray
+            Arrays of trace headers."""
+        tracecounts = self.index.tracecounts
+        values = self.index.get_df()[header].values
+        if flatten:
+            return values
+
+        return np.array(np.split(values, np.cumsum(tracecounts)[:-1]) + [None])[:-1]
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
@@ -359,7 +374,7 @@ class SeismicBatch(Batch):
         except ValueError as err:
             if length_alignment is None:
                 raise ValueError(str(err) + '\nTry to set length_alingment to \'max\' or \'min\'')
-            elif length_alignment == 'min':
+            if length_alignment == 'min':
                 nsamples = min([len(t) for t in data])
             elif length_alignment == 'max':
                 nsamples = max([len(t) for t in data])
@@ -482,7 +497,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.concatenate(getattr(self, src))
+        data = getattr(self, src).astype(int)
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -495,10 +510,10 @@ class SeismicBatch(Batch):
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df['timeOffset'] = data
+        df['timeOffset'] = data.astype(int)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
-        
+
         for i in [0, 2, 4]:
             df.insert(i, str(i), "")
         df.to_csv(path, index=False, sep='\t', header=False, encoding='ascii', mode='a')
@@ -713,10 +728,7 @@ class SeismicBatch(Batch):
         mask = list()
         for _, trace in enumerate(traces != 0):
             diff_zeros = np.diff(np.append(np.where(trace)[0], len(trace)))
-            if len(diff_zeros) == 0:
-                mask.append(False)
-            else:
-                mask.append(np.max(diff_zeros) < num_zero)
+            mask.append(False if len(diff_zeros) == 0 else np.max(diff_zeros) < num_zero)
         return mask
 
     @action
@@ -772,7 +784,7 @@ class SeismicBatch(Batch):
             raise ValueError('Sample time should be specified or by self.meta[src] or by sample_time.')
 
         if len(speed_conc) != field.shape[1]:
-            raise ValueError('Speed must have shape equal to trace lenght, not {} but {}'.format(speed_conc.shape[0],
+            raise ValueError('Speed must have shape equal to trace length, not {} but {}'.format(speed_conc.shape[0],
                                                                                                  field.shape[1]))
         t_zero = (np.arange(1, field.shape[1]+1)*sample_time)/1000
         time_range = np.arange(0, field.shape[1])
@@ -797,10 +809,11 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def correct_spherical_divergence(self, src, dst, fun=None, started_point=None, time=None, # pylint: disable=too-many-arguments
-                                     speed=None, v_pow=None, t_pow=None, method=None,
-                                     use_for_all=False, find_params=True, params_comp=None, bounds=None):
-        """Correction of spherical divergence with given parameers or with optimal parameters.
+    def correct_spherical_divergence(self, src, dst, speed, params, time=None):
+        """Correction of spherical divergence with given parameers or with optimal parameters. There are two
+        ways to use this funcion. The simplest way is to determine parameters then correction will be made
+        with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
+        from SeismicDataset class for full dataset.
 
         Parameters
         ----------
@@ -808,30 +821,14 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        fun : callable, optional
-            Function to minimize.
-        started_point : array of 2, optional
-            Started values for $v_{pow}$ and $t_{pow}$.
-        time : array, optional
-            Trace time values.
-        speed : array, optional
+        speed : array
             Wave propagation speed depending on the depth.
-        v_pow : float or int, optional
-            Speed's power.
-        t_pow : float or int, optional
-            Time's power.
-        method : str, optional
-            Minimization method, see ```scipy.optimize.minimize```.
-        use_for_all : bool, default False
-            If true, optimal parameters for first element will be used for all batch,
-            else optimal parameters will find for each field separately.
-        find_params : bool, default True
-            If true, fields will be compensated with founeded parameres by scipy minimize
-            function, else will be used parameters from arguments.
-        params_comp : None of str, default None
-            If str, parameters will be saved in a component with name ```params_comp```.
-        bounds : int, default ((0, 5), (0, 5))
-            Optimization bounds.
+            Speed is measured in milliseconds.
+        params : array of floats(or ints) with length 2
+            Containter with parameters in the following order: [v_pow, t_pow].
+        time : array, optional
+            Trace time values. If `None` defaults to self.meta[src]['samples'].
+            Time measured in either in samples or in milliseconds.
 
         Returns
         -------
@@ -845,35 +842,20 @@ class SeismicBatch(Batch):
         Raises
         ------
         ValueError : If Index is not FieldIndex.
+        ValueError : If length of ```params``` not equal to 2.
         """
-        fields = getattr(self, src)
-        bounds = ((0, 5), (0, 5)) if bounds is None else bounds
-
         if not isinstance(self.index, FieldIndex):
-            raise ValueError("Index must be FieldIndex not {}".format(type(self.index)))
-        if not isinstance(time, int):
-            time = np.array(time, dtype=int)
-        if not isinstance(speed, int):
-            speed = np.array(speed, dtype=int)
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
-        if find_params:
-            if use_for_all:
-                field = fields[0]
-                args = (field, time, speed)
+        if len(params) != 2:
+            raise ValueError("The length of the ```params``` must be equal to two, not {}.".format(len(params)))
 
-                func = minimize(fun, started_point, args=args, method=method, bounds=bounds)
-                v_pow, t_pow = func.x
+        time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
+        step = np.diff(time[:2])[0].astype(int)
+        speed = np.array(speed, dtype=int)[::step]
+        v_pow, t_pow = params
 
-                if params_comp is not None:
-                    setattr(self, params_comp, np.array([v_pow, t_pow]))
-                self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
-            else:
-                self._find_and_correct_sd(src=src, dst=dst, fun=fun, started_point=started_point,
-                                          arr=(time, speed), method=method, params_comp=params_comp, bounds=bounds)
-        else:
-            if None in [v_pow, t_pow]:
-                raise ValueError("pow_t or pow_v can't be None if find_params is False ")
-            self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
+        self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
         return self
 
     @inbatch_parallel(init='_init_component')
@@ -882,26 +864,9 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        correct_field = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
+        correct_field = calculate_sdc_for_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
 
         getattr(self, dst)[pos] = correct_field
-        return self
-
-    @inbatch_parallel(init='_init_component')
-    def _find_and_correct_sd(self, index, src, dst, fun, started_point, arr, method, params_comp, bounds):
-        """Find optimal parameters and correct spherical divergence. """
-        pos = self.get_pos(None, src, index)
-        field = getattr(self, src)[pos]
-
-        time, speed = arr
-        args = (field, *arr)
-        func = minimize(fun, started_point, args=args, method=method, bounds=bounds)
-        v_pow, t_pow = func.x
-        if params_comp is not None:
-            if getattr(self, params_comp) is None:
-                raise ValueError('```params_comp``` should be an array but got None')
-            getattr(self, params_comp)[pos] = np.array([v_pow, t_pow])
-        getattr(self, dst)[pos] = time_dep(field, time, speed, v_pow=v_pow, t_pow=t_pow)
         return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
@@ -1053,8 +1018,7 @@ class SeismicBatch(Batch):
         """
         _ = kwargs
         pos = self.get_pos(None, 'indices', index)
-        if isinstance(src, str):
-            sample = tuple(sample, )
+        src = (src, ) if isinstance(src, str) else src
         sample = [getattr(self, source)[pos] for source in src]
         gain_plot(sample, window, xlim, ylim, figsize, names, **kwargs)
         return self
@@ -1093,8 +1057,8 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def normalize_traces(self, src, dst):
-        """Normalize traces to zero mean and unit variance.
+    def standardize(self, src, dst):
+        """standardize traces to zero mean and unit variance.
 
         Parameters
         ----------
@@ -1108,15 +1072,19 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the normalized traces.
         """
-        data = getattr(self, src)
-        data = np.stack(data)
-        dst_data = (data - np.mean(data, axis=2, keepdims=True)) / (np.std(data, axis=2, keepdims=True) + 10 ** -6)
+        data = np.concatenate(getattr(self, src))
+        std_data = (data - np.mean(data, axis=1, keepdims=True)) / (np.std(data, axis=1, keepdims=True) + 10 ** -6)
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(std_data, ind)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
     def picking_to_mask(self, src, dst, src_traces='raw'):
-        """Convert picking time to the mask.
+        """Convert picking time to the mask for TraceIndex.
 
         Parameters
         ----------
@@ -1126,24 +1094,32 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         src_traces : str
             The batch components which contains traces.
-            
+
         Returns
         -------
         batch : SeismicBatch
             Batch with the mask corresponds to the picking.
         """
-        data = np.concatenate(np.vstack(getattr(self, src)))
+        data = np.concatenate(getattr(self, src))
+
         samples = self.meta[src_traces]['samples']
         tick = samples[1] - samples[0]
         data = np.around(data / tick).astype('int')
+
         batch_size = data.shape[0]
-        trace_length = self.raw[0].shape[1]
+        trace_length = getattr(self, src_traces)[0].shape[1]
         ind = tuple(np.array(list(zip(range(batch_size), data))).T)
         ind[1][ind[1] < 0] = 0
         mask = np.zeros((batch_size, trace_length))
         mask[ind] = 1
         dst_data = np.cumsum(mask, axis=1)
-        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(dst_data, ind)
+        dst_data = np.array([np.squeeze(i) for i in dst_data] + [None])[:-1]
+        setattr(self, dst, dst_data)
         return self
 
     @action
@@ -1174,7 +1150,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def mcm(self, src, dst, eps=3, l=12):
+    def mcm(self, src, dst, eps=3, length_win=12):
         """Creates for each trace corresponding Energy function.
         Based on Coppens(1985) method.
 
@@ -1186,7 +1162,7 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         eps: float, default: 3
             Stabilization constant that helps reduce the rapid fluctuations of energy function.
-        l: int, default: 12
+        length_win: int, default: 12
             The leading window length.
 
         Returns
@@ -1197,9 +1173,9 @@ class SeismicBatch(Batch):
         trace = np.concatenate(getattr(self, src))
         energy = np.cumsum(trace**2, axis=1)
         long_win, lead_win = energy, energy
-        lead_win[:, l:] = lead_win[:, l:] - lead_win[:, :-l]
-        er = lead_win / (long_win + eps)
-        self.add_components(dst, init=np.array([i for i in er] + [None])[:-1])
+        lead_win[:, length_win:] = lead_win[:, length_win:] - lead_win[:, :-length_win]
+        energy = lead_win / (long_win + eps)
+        self.add_components(dst, init=np.array([i for i in energy] + [None])[:-1])
         return self
 
     @action
@@ -1219,10 +1195,8 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch with the predicted picking by MCM method.
         """
-        er = np.stack(getattr(self, src))
-        er = np.gradient(er, axis=1)
-        picking = np.argmax(er, axis=1)
+        energy = np.stack(getattr(self, src))
+        energy = np.gradient(energy, axis=1)
+        picking = np.argmax(energy, axis=1)
         self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
         return self
-    
-    

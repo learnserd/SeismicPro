@@ -1,34 +1,15 @@
-"""Seismic batch tools."""
+""" Seismic batch tools """
 import functools
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from tqdm import tqdm
 from scipy.signal import medfilt, hilbert
 import segyio
 
-from . import seismic_index as si
 from ..batchflow import FilesIndex
-from ..batchflow.models.metrics import Metrics
 
 DEFAULT_SEGY_HEADERS = ['FieldRecord', 'TraceNumber', 'TRACE_SEQUENCE_FILE']
 FILE_DEPENDEND_COLUMNS = ['TRACE_SEQUENCE_FILE', 'file_id']
-
-class PickingMetrics(Metrics):
-    """Class for First Break picking task metrics.
-    """
-    def __init__(self, targets, predictions, gap=3):
-        super().__init__()
-        self.targets = targets
-        self.predictions = predictions
-        self.gap = gap
-
-    def mae(self):
-        return np.mean(np.abs(self.targets - self.predictions))
-
-    def accuracy(self):
-        abs_diff = np.abs(self.targets - self.predictions)
-        return 100 * len(abs_diff[abs_diff < self.gap]) / len(abs_diff)
 
 def partialmethod(func, *frozen_args, **frozen_kwargs):
     """Wrap a method with partial application of given positional and keyword
@@ -53,100 +34,6 @@ def partialmethod(func, *frozen_args, **frozen_kwargs):
         """Wrapped method."""
         return func(self, *frozen_args, *args, **frozen_kwargs, **kwargs)
     return method
-
-def write_segy_file(data, df, samples, path, sorting=None, segy_format=1):
-    """Write data and headers into SEGY file.
-
-    Parameters
-    ----------
-    data : array-like
-        Array of traces.
-    df : DataFrame
-        DataFrame with trace headers data.
-    samples : array, same length as traces
-        Time samples for trace data.
-    path : str
-        Path to output file.
-    sorting : int
-        SEGY file sorting.
-    format : int
-        SEGY file format.
-
-    Returns
-    -------
-    """
-    spec = segyio.spec()
-    spec.sorting = sorting
-    spec.format = segy_format
-    spec.samples = samples
-    spec.tracecount = len(data)
-
-    df.columns = [getattr(segyio.TraceField, k) for k in df.columns]
-    df[getattr(segyio.TraceField, 'TRACE_SEQUENCE_FILE')] = np.arange(len(df)) + 1
-
-    with segyio.create(path, spec) as file:
-        file.trace = data
-        meta = df.to_dict('index')
-        for i, x in enumerate(file.header[:]):
-            x.update(meta[i])
-
-def merge_segy_files(output_path, bar=True, **kwargs):
-    """Merge segy files into a single segy file.
-
-    Parameters
-    ----------
-    output_path : str
-        Path to output file.
-    bar : bool, deafult to True
-        Whether to how progress bar.
-    kwargs : dict
-        Keyword arguments to index input segy files.
-
-    Returns
-    -------
-    """
-    segy_index = si.SegyFilesIndex(**kwargs, name='data')
-    spec = segyio.spec()
-    spec.sorting = None
-    spec.format = 1
-    spec.tracecount = sum(segy_index.tracecounts)
-    with segyio.open(segy_index.indices[0], strict=False) as file:
-        spec.samples = file.samples
-
-    with segyio.create(output_path, spec) as dst:
-        i = 0
-        iterable = tqdm(segy_index.indices) if bar else segy_index.indices
-        for index in iterable:
-            with segyio.open(index, strict=False) as src:
-                dst.trace[i: i + src.tracecount] = src.trace
-                dst.header[i: i + src.tracecount] = src.header
-                for j in range(src.tracecount):
-                    dst.header[i + j].update({segyio.TraceField.TRACE_SEQUENCE_FILE: i + j + 1})
-
-            i += src.tracecount
-
-
-def merge_picking_files(output_path, **kwargs):
-    """Merge picking files into a single file.
-
-    Parameters
-    ----------
-    output_path : str
-        Path to output file.
-    kwargs : dict
-        Keyword arguments to index input files.
-
-    Returns
-    -------
-    """
-    files_index = FilesIndex(**kwargs)
-    dfs = []
-    for i in files_index.indices:
-        path = files_index.get_fullpath(i)
-        dfs.append(pd.read_csv(path))
-
-    df = pd.concat(dfs, ignore_index=True)
-    df.to_csv(output_path, index=False)
 
 def print_results(df, layout, average_repetitions=False, sort_by=None, ascending=True, n_last=100):
     """ Show results given by research dataframe.
@@ -723,6 +610,7 @@ def calc_v_rms(t, speed):
     Value calculated by following formula:
 
     $$ V_{rms} = \left(\frac{\sum_0^t V^2}{|V|} \right)^{1/2} $$
+    Where $|V|$ is a number of elements in V.
 
     Parameters
     ----------
@@ -737,13 +625,10 @@ def calc_v_rms(t, speed):
         : float
         $V_{rms}$
     """
-    if t == 0:
-        return speed[0]
-    return (np.mean(speed[:t]**2))**.5
+    return (np.mean(speed[:t+1]**2))**.5
 
-def calc_sdc(time, speed, v_pow, t_pow):
-    """
-    Calculate spherical divergence correction (SDC).
+def calc_sdc(ix, time, speed, v_pow, t_pow):
+    """ Calculate spherical divergence correction (SDC).
     This value has the following formula:
     $$ g(t) = \frac{V_{rms}^{v_{pow}} * t^{t_{pow}}}{V_0} $$
 
@@ -754,8 +639,10 @@ def calc_sdc(time, speed, v_pow, t_pow):
     ----------
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     v_pow : float or int
         Speed's power.
     t_pow : float or int
@@ -766,12 +653,12 @@ def calc_sdc(time, speed, v_pow, t_pow):
         : float
         Correction value to suppress the spherical divergence.
     """
-    correction = (calc_v_rms(time, speed) ** v_pow * time ** t_pow)/speed[0]
+    correction = (calc_v_rms(ix, speed) ** v_pow * time[ix] ** t_pow)/speed[0]
     if correction == 0:
         return 1.
     return correction
 
-def time_dep(field, time, speed, v_pow=2, t_pow=1):
+def calculate_sdc_for_field(field, time, speed, v_pow=2, t_pow=1):
     """ Correction of spherical divergence.
 
     Parameters
@@ -780,8 +667,10 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         Field for correction.
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     v_pow : float or int
         Speed's power.
     t_pow : float or int
@@ -791,12 +680,11 @@ def time_dep(field, time, speed, v_pow=2, t_pow=1):
         : array of arrays
         Corrected field.
     """
-    speed = speed[: field.shape[1]]
     new_field = np.zeros_like(field)
-    for ix, t in enumerate(time):
+    for ix in range(field.shape[1]):
         timestamp = field[:, ix]
-        correction_coef = (calc_sdc(t, speed, v_pow=v_pow, t_pow=t_pow)
-                           / calc_sdc(np.max(time), speed, v_pow=v_pow, t_pow=t_pow))
+        correction_coef = (calc_sdc(ix, time, speed, v_pow=v_pow, t_pow=t_pow)
+                           / calc_sdc(np.argmax(time), time, speed, v_pow=v_pow, t_pow=t_pow))
         new_field[:, ix] = timestamp * correction_coef
     return new_field
 
@@ -829,8 +717,9 @@ def measure_gain_amplitude(field, window):
     return result
 
 def calculate_sdc_quality(parameters, field, time, speed, window=51):
-    """Calculate the quality of found parameters.
-    The qualiry caluclated as the median of the first order gradient module.
+    """Calculate the quality of estimated parameters.
+
+    The quality caluclated as the median of absolute value of the first order derivative.
 
     Parameters
     ----------
@@ -840,8 +729,10 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
         Field for compensation.
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     window : int, default 51
         Size of smoothing window of the median filter.
 
@@ -852,8 +743,8 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """
 
     v_pow, t_pow = parameters
-    new_field = time_dep(field, time=time, speed=speed,
-                         v_pow=v_pow, t_pow=t_pow)
+    new_field = calculate_sdc_for_field(field, time=time, speed=speed,
+                                        v_pow=v_pow, t_pow=t_pow)
 
     result = measure_gain_amplitude(new_field, window)
     return np.median(np.abs(np.gradient(result)))
@@ -881,10 +772,11 @@ def massive_block(data):
     if len(plus_one) == 0:
         return [[0]] * data.shape[0]
 
-    d = minus_one[:, 1] - plus_one[:, 1]
+    distance = minus_one[:, 1] - plus_one[:, 1]
     mask = minus_one[:, 0]
 
-    sort = np.lexsort((d, mask))
+    idxs = np.argsort(distance, kind="stable")
+    sort = idxs[np.argsort(mask[idxs], kind="stable")]
     ind = [0] * mask[0]
     for i in range(len(sort[:-1])):
         diff = mask[i +1] - mask[i]
@@ -895,5 +787,4 @@ def massive_block(data):
             ind.append(plus_one[:, 1][sort[i]])
     ind.append(plus_one[:, 1][sort[-1]])
     ind.extend([0] * (arr.shape[0] - mask[-1] - 1))
-    ind = [[i] for i in ind]
     return ind

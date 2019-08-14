@@ -6,7 +6,7 @@ import segyio
 
 from ..batchflow import DatasetIndex
 
-from . import utils as ut
+from .utils import make_bin_index, build_sps_df, build_segy_df
 from .plot_utils import show_2d_heatmap, show_1d_heatmap
 
 
@@ -155,7 +155,8 @@ class TraceIndex(DatasetIndex):
         """Drop duplicated ('FieldRecord', 'TraceNumber') pairs."""
         subset = [('FieldRecord', ''), ('TraceNumber', '')]
         df = self.get_df().drop_duplicates(subset=subset, keep=keep)
-        df.set_index(self.name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
         return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
@@ -177,7 +178,8 @@ class TraceIndex(DatasetIndex):
         idf = self.get_df()
         xdf = x.get_df()
         df = idf.merge(xdf, **kwargs)
-        df.set_index(self.name, inplace=True)
+        if self.name is not None:
+            df.set_index(self.name, inplace=True)
         indices = df.index.unique().sort_values()
         return type(self).from_index(index=indices, idf=df, index_name=self.name)
 
@@ -204,9 +206,9 @@ class TraceIndex(DatasetIndex):
     def build_df(self, **kwargs):
         """Build DataFrame."""
         if 'dfx' in kwargs.keys():
-            return ut.build_sps_df(**kwargs)
+            return build_sps_df(**kwargs)
 
-        return ut.build_segy_df(**kwargs)
+        return build_segy_df(**kwargs)
 
     def build_from_index(self, index, idf):
         """Build index from another index for indices given."""
@@ -389,7 +391,7 @@ class BinsIndex(TraceIndex):
 
     def build_df(self, **kwargs):
         """Build DataFrame."""
-        df, meta = ut.make_bin_index(**kwargs)
+        df, meta = make_bin_index(**kwargs)
         self.meta.update(meta)
         return df
 
