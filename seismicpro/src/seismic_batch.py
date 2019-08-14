@@ -1,4 +1,4 @@
-"""Seismic batch."""
+"""Seismic batch.""" # pylint: disable=too-many-lines
 import os
 from textwrap import dedent
 import numpy as np
@@ -9,10 +9,12 @@ import segyio
 
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
-from .seismic_index import SegyFilesIndex
-from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, write_segy_file,
-                    time_statistics, spectral_statistics)
-from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, show_statistics
+from .seismic_index import SegyFilesIndex, FieldIndex
+
+from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block
+from .file_utils import write_segy_file
+from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
+
 
 PICKS_FILE_HEADERS = ['FieldRecord', 'TraceNumber', 'timeOffset']
 
@@ -120,7 +122,6 @@ def add_actions(actions_dict, template_docstring):
         return cls
     return decorator
 
-
 @add_actions(ACTIONS_DICT, TEMPLATE_DOCSTRING)  # pylint: disable=too-many-public-methods,too-many-instance-attributes
 class SeismicBatch(Batch):
     """Batch class for seimsic data. Contains seismic traces, metadata and processing methods.
@@ -157,18 +158,13 @@ class SeismicBatch(Batch):
         """Create and preallocate a new attribute with the name ``dst`` if it
         does not exist and return batch indices."""
         _ = args, kwargs
-        if isinstance(dst, str):
-            dst = (dst,)
+        dst = (dst, ) if isinstance(dst, str) else dst
 
         for comp in dst:
-            if not hasattr(self, comp):
-                setattr(self, comp, np.array([None] * len(self.index)))
-
-            if comp not in self.meta:
-                self.meta[comp] = dict()
+            self.meta[comp] = self.meta[comp] if comp in self.meta else dict()
 
             if self.components is None or comp not in self.components:
-                self.add_components(comp)
+                self.add_components(comp, init=self.array_of_nones)
 
         return self.indices
 
@@ -195,30 +191,53 @@ class SeismicBatch(Batch):
             all_errors = [error for error in mask if isinstance(error, Exception)]
             print(all_errors)
             raise ValueError(all_errors)
-        else:
-            _ = args
-            src = kwargs.get('src', None)
 
-            if isinstance(src, str):
-                src = (src, )
+        _ = args
+        src = kwargs.get('src', None)
+        src = (src, ) if isinstance(src, str) else src
 
-            mask = np.array(mask).sum(axis=1, dtype=bool)
+        mask = np.concatenate((np.array(mask)))
+        new_idf = self.index.get_df(index=np.hstack((mask)), reset=False)
+        new_index = new_idf.index.unique()
 
-            new_idf = self.index.get_df(index=mask.ravel(), reset=False)
-            new_index = new_idf.index.unique()
-            batch_index = type(self.index).from_index(index=new_index, idf=new_idf, index_name=self.index.name)
+        batch_index = type(self.index).from_index(index=new_index, idf=new_idf,
+                                                  index_name=self.index.name)
 
-            batch = type(self)(batch_index)
-            for comp in self.components:
-                setattr(batch, comp, np.array([None] * len(batch.index)))
-            batch.add_components(self.components)
+        batch = type(self)(batch_index)
+        batch.add_components(self.components)
+        batch.meta = self.meta
 
-            for i, index in enumerate(new_index):
-                for isrc in batch.components:
-                    pos = self.get_pos(None, isrc, index)
-                    new_data = getattr(self, isrc)[pos][mask[pos]]
-                    getattr(batch, isrc)[i] = new_data
+        for comp in batch.components:
+            setattr(batch, comp, np.array([None] * len(batch.index)))
+
+        for i, index in enumerate(new_index):
+            for isrc in batch.components:
+                pos = self.get_pos(None, isrc, index)
+                new_data = getattr(self, isrc)[pos][mask[pos]]
+                getattr(batch, isrc)[i] = new_data
         return batch
+
+    def trace_headers(self, header, flatten=False):
+        """Get trace heades.
+
+        Parameters
+        ----------
+        header : string
+            Header name.
+        flatten : bool
+            If False, array of headers will be splitted according to batch item sizes.
+            If True, return a flattened array. Dafault to False.
+
+        Returns
+        -------
+        arr : ndarray
+            Arrays of trace headers."""
+        tracecounts = self.index.tracecounts
+        values = self.index.get_df()[header].values
+        if flatten:
+            return values
+
+        return np.array(np.split(values, np.cumsum(tracecounts)[:-1]) + [None])[:-1]
 
     @action
     @inbatch_parallel(init="_init_component", target="threads")
@@ -355,7 +374,7 @@ class SeismicBatch(Batch):
         except ValueError as err:
             if length_alignment is None:
                 raise ValueError(str(err) + '\nTry to set length_alingment to \'max\' or \'min\'')
-            elif length_alignment == 'min':
+            if length_alignment == 'min':
                 nsamples = min([len(t) for t in data])
             elif length_alignment == 'max':
                 nsamples = max([len(t) for t in data])
@@ -478,7 +497,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = np.concatenate(getattr(self, src))
+        data = getattr(self, src).astype(int)
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -491,10 +510,13 @@ class SeismicBatch(Batch):
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df['timeOffset'] = data
+        df['timeOffset'] = data.astype(int)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
-        df.to_csv(path, index=False)
+
+        for i in [0, 2, 4]:
+            df.insert(i, str(i), "")
+        df.to_csv(path, index=False, sep='\t', header=False, encoding='ascii', mode='a')
         return self
 
     @action
@@ -557,7 +579,7 @@ class SeismicBatch(Batch):
 
         batch = type(self)(segy_index)._load_from_segy_file(src=src, dst=dst, tslice=tslice) # pylint: disable=protected-access
         all_traces = np.concatenate(getattr(batch, dst))[order]
-        self.meta[dst] = dict(samples=batch.meta[dst]['samples'])
+        self.meta[dst] = batch.meta[dst]
 
         if self.index.name is None:
             res = np.array(list(np.expand_dims(all_traces, 1)) + [None])[:-1]
@@ -566,7 +588,6 @@ class SeismicBatch(Batch):
             res = np.array(np.split(all_traces, np.cumsum(lens)[:-1]) + [None])[:-1]
 
         self.add_components(dst, init=res)
-        self.meta[dst]['sorting'] = None
 
         return self
 
@@ -584,10 +605,12 @@ class SeismicBatch(Batch):
             traces = np.atleast_2d([segyfile.trace[i - 1][tslice] for i in
                                     np.atleast_1d(trace_seq).astype(int)])
             samples = segyfile.samples[tslice]
+            interval = segyfile.bin[segyio.BinField.Interval]
 
         getattr(self, dst)[pos] = traces
         if index == self.indices[0]:
             self.meta[dst]['samples'] = samples
+            self.meta[dst]['interval'] = interval
             self.meta[dst]['sorting'] = None
 
         return self
@@ -684,7 +707,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init="indices", post='_post_filter_by_mask', target="threads")
     @apply_to_each_component
-    def drop_zero_traces(self, index, num_zero, src, **kwargs):
+    def drop_zero_traces(self, index, src, num_zero, **kwargs):
         """Drop traces with sequence of zeros longer than ```num_zero```.
 
         Parameters
@@ -705,11 +728,146 @@ class SeismicBatch(Batch):
         mask = list()
         for _, trace in enumerate(traces != 0):
             diff_zeros = np.diff(np.append(np.where(trace)[0], len(trace)))
-            if len(diff_zeros) == 0:
-                mask.append(False)
-            else:
-                mask.append(np.max(diff_zeros) < num_zero)
+            mask.append(False if len(diff_zeros) == 0 else np.max(diff_zeros) < num_zero)
         return mask
+
+    @action
+    @inbatch_parallel(init='_init_component')
+    def field_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4, sample_time=None):
+        r""" Straightening up the travel time curve with normal grading. Shift for each
+        time value calculated by following way:
+
+        $$\vartriangle t = t(0) \left(\left( 1 + \left( \frac{x}{V(t) t(0)}\right)\right)^{1/2} - 1\right)$$
+
+        New amplitude value for t(0) is the mean value of ```num_mean_tr```'s adjacent
+        amplitudes from $t(0) + \vartriangle t$.
+
+        Parameters
+        ----------
+        speed : array or array of arrays
+            Speed law for traces.
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        num_mean_tr : int ,optional default 4
+            Number of timestamps to meaning new amplitude value.
+        sample_time : int, float, optional
+            Difference between real time and samples. Note that ```sample_time``` is measured in milliseconds.
+
+        Returns
+        -------
+            : SeismicBatch
+            Traces straightened on the basis of speed and time values.
+
+        Note
+        ----
+        1. Works only with sorted traces by offset.
+        2. Works properly only with FieldIndex with CDP index.
+
+        Raises
+        ------
+        ValueError : Raise if traces is not sorted by offset.
+        """
+        dst = src if dst is None else dst
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        offset = np.sort(self.index.get_df(index=index)['offset'])
+        speed_conc = np.array(speed[:field.shape[1]])
+
+        if self.meta[src]['sorting'] != 'offset':
+            raise ValueError('All traces should be sorted by offset not {}'.format(self.meta[src]['sorting']))
+        if 'samples' in self.meta[src].keys():
+            sample_time = np.diff(self.meta[src]['samples'][:2])[0]
+        elif sample_time is None:
+            raise ValueError('Sample time should be specified or by self.meta[src] or by sample_time.')
+
+        if len(speed_conc) != field.shape[1]:
+            raise ValueError('Speed must have shape equal to trace length, not {} but {}'.format(speed_conc.shape[0],
+                                                                                                 field.shape[1]))
+        t_zero = (np.arange(1, field.shape[1]+1)*sample_time)/1000
+        time_range = np.arange(0, field.shape[1])
+        new_field = []
+        calc_delta = lambda t_z, spd, ofst: t_z*((1 + (ofst/(spd*t_z+1e-6))**2)**.5 - 1)
+
+        for ix, off in enumerate(offset):
+            time_x = calc_delta(t_zero, speed_conc, off)
+            shift = np.round((time_x*1000)/sample_time).astype(int)
+            down_ix = time_range + shift
+
+            left = -int(num_mean_tr/2) + (~num_mean_tr % 2)
+            right = left + num_mean_tr
+            mean_traces = np.arange(left, right).reshape(-1, 1)
+
+            ix_to_mean = np.zeros((num_mean_tr, *down_ix.shape)) + [down_ix]*num_mean_tr + mean_traces
+            ix_to_mean = np.clip(ix_to_mean, 0, time_range[-1]).astype(int)
+
+            new_field.append(np.mean(field[ix][ix_to_mean], axis=0))
+
+        getattr(self, dst)[pos] = np.array(new_field)
+        return self
+
+    @action
+    def correct_spherical_divergence(self, src, dst, speed, params, time=None):
+        """Correction of spherical divergence with given parameers or with optimal parameters. There are two
+        ways to use this funcion. The simplest way is to determine parameters then correction will be made
+        with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
+        from SeismicDataset class for full dataset.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        speed : array
+            Wave propagation speed depending on the depth.
+            Speed is measured in milliseconds.
+        params : array of floats(or ints) with length 2
+            Containter with parameters in the following order: [v_pow, t_pow].
+        time : array, optional
+            Trace time values. If `None` defaults to self.meta[src]['samples'].
+            Time measured in either in samples or in milliseconds.
+
+        Returns
+        -------
+            : SeismicBatch
+            Batch of fields with corrected spherical divergence.
+
+        Note
+        ----
+        Works properly only with FieldIndex.
+
+        Raises
+        ------
+        ValueError : If Index is not FieldIndex.
+        ValueError : If length of ```params``` not equal to 2.
+        """
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        if len(params) != 2:
+            raise ValueError("The length of the ```params``` must be equal to two, not {}.".format(len(params)))
+
+        time = self.meta[src]['samples'] if time is None else np.array(time, dtype=int)
+        step = np.diff(time[:2])[0].astype(int)
+        speed = np.array(speed, dtype=int)[::step]
+        v_pow, t_pow = params
+
+        self._correct_sph_div(src=src, dst=dst, time=time, speed=speed, v_pow=v_pow, t_pow=t_pow)
+        return self
+
+    @inbatch_parallel(init='_init_component')
+    def _correct_sph_div(self, index, src, dst, time, speed, v_pow, t_pow):
+        """Correct spherical divergence with given parameters. """
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        correct_field = calculate_sdc_for_field(field, time, speed, v_pow=v_pow, t_pow=t_pow)
+
+        getattr(self, dst)[pos] = correct_field
+        return self
 
     def items_viewer(self, src, scroll_step=1, **kwargs):
         """Scroll and view batch items. Emaple of use:
@@ -739,9 +897,9 @@ class SeismicBatch(Batch):
                                scroll_step=scroll_step, **kwargs)
         return fig, tracker
 
-    def seismic_plot(self, src, index, to_samples=True, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                     src_picking=None, s=None, c=None, figsize=None,
-                     save_to=None, dpi=None, **kwargs):
+    def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
+                     src_picking=None, s=None, scatter_color=None, figsize=None,
+                     save_to=None, dpi=None, line_color=None, title=None, **kwargs):
         """Plot seismic traces.
 
         Parameters
@@ -750,8 +908,6 @@ class SeismicBatch(Batch):
             The batch component(s) with data to show.
         index : same type as batch.indices
             Data index to show.
-        sample_tick : int
-            Number of miliseconds between samples.
         wiggle : bool, default to False
             Show traces in a wiggle form.
         xlim : tuple, optionalgit
@@ -764,7 +920,7 @@ class SeismicBatch(Batch):
             Component with picking data.
         s : scalar or array_like, shape (n, ), optional
             The marker size in points**2.
-        c : color, sequence, or sequence of color, optional
+        scatter_color : color, sequence, or sequence of color, optional
             The marker color.
         figsize : array-like, optional
             Output plot size.
@@ -772,6 +928,10 @@ class SeismicBatch(Batch):
             If not None, save plot to given path.
         dpi : int, optional, default: None
             The resolution argument for matplotlib.pyplot.savefig.
+        line_color : color, sequence, or sequence of color, optional, default: None
+            The trace color.
+        title : str
+            Plot title.
         kwargs : dict
             Additional keyword arguments for plot.
 
@@ -784,11 +944,8 @@ class SeismicBatch(Batch):
             src = (src,)
 
         if src_picking is not None:
-            picking = getattr(self, src_picking)[pos]
-            if to_samples:
-                samples = self.meta[src[0]]['samples']
-                tick = samples[1] - samples[0]
-                picking = picking / tick
+            rate = self.meta[src[0]]['interval'] / 1e3
+            picking = getattr(self, src_picking)[pos] / rate
             pts_picking = (range(len(picking)), picking)
         else:
             pts_picking = None
@@ -796,8 +953,9 @@ class SeismicBatch(Batch):
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
         seismic_plot(arrs=arrs, wiggle=wiggle, xlim=xlim, ylim=ylim, std=std,
-                     pts=pts_picking, s=s, c=c, figsize=figsize, names=names,
-                     save_to=save_to, dpi=dpi, **kwargs)
+                     pts=pts_picking, s=s, scatter_color=scatter_color,
+                     figsize=figsize, names=names, save_to=save_to,
+                     dpi=dpi, line_color=line_color, title=title, **kwargs)
         return self
 
     def spectrum_plot(self, src, index, frame, max_freq=None,
@@ -831,52 +989,214 @@ class SeismicBatch(Batch):
 
         arrs = [getattr(self, isrc)[pos] for isrc in src]
         names = [' '.join([i, str(index)]) for i in src]
-        samples = self.meta[src[0]]['samples']
-        rate = samples[1] - samples[0]
+        rate = self.meta[src[0]]['interval'] / 1e6
         spectrum_plot(arrs=arrs, frame=frame, rate=rate, max_freq=max_freq,
                       names=names, figsize=figsize, save_to=save_to, **kwargs)
         return self
 
-    def show_statistics(self, src, index, domain, tslice=None,
-                        figsize=None, **kwargs):
-        """Show statistics in 2D plots.
+    def gain_plot(self, src, index, window=51, xlim=None, ylim=None,
+                  figsize=None, names=None, **kwargs):
+        """Gain's graph plots the ratio of the maximum mean value of
+        the amplitude to the mean value of the amplitude at the moment t.
 
         Parameters
         ----------
-        src : str
-            The batch component with data to use for statistics calculation.
-        index : same type as batch.indices
-            Data index to select data from.
-        domain : str, 'time' or 'frequency'
-            Domain to calculate statistics in.
-        tslice : slice, default to None
-            Slice of time samples to select from data.
+        window : int, default 51
+            Size of smoothing window of the median filter.
+        xlim : tuple or list with size 2
+            Bounds for plot's x-axis.
+        ylim : tuple or list with size 2
+            Bounds for plot's y-axis.
         figsize : array-like, optional
             Output plot size.
+        names : str or array-like, optional
+            Title names to identify subplots.
+
+        Returns
+        -------
+        Gain's plot.
+        """
+        _ = kwargs
+        pos = self.get_pos(None, 'indices', index)
+        src = (src, ) if isinstance(src, str) else src
+        sample = [getattr(self, source)[pos] for source in src]
+        gain_plot(sample, window, xlim, ylim, figsize, names, **kwargs)
+        return self
+
+    def statistics_plot(self, src, index, stats, figsize=None, save_to=None, **kwargs):
+        """Plot seismogram(s) and various trace statistics.
+
+        Parameters
+        ----------
+        src : str or array of str
+            The batch component(s) with data to show.
+        index : same type as batch.indices
+            Data index to show.
+        stats : str, callable or array-like
+            Name of statistics in statistics zoo, custom function to be avaluated or array of stats.
+        figsize : array-like, optional
+            Output plot size.
+        save_to : str or None, optional
+            If not None, save plot to given path.
         kwargs : dict
             Named argumets to matplotlib.pyplot.imshow.
 
         Returns
         -------
-        Plots of statistics distribution.
+        Plot of seismogram(s) and power spectrum(s).
         """
-        pos = self.get_pos(None, src, index)
-        data = getattr(self, src)[pos]
-        if tslice is not None:
-            data = data[:, tslice]
+        pos = self.get_pos(None, 'indices', index)
+        if len(np.atleast_1d(src)) == 1:
+            src = (src,)
 
-        iline = self.index.get_df(index)['INLINE_3D']
-        xline = self.index.get_df(index)['CROSSLINE_3D']
-        if domain == 'time':
-            vals = time_statistics(data)
-        elif domain == 'frequency':
-            samples = self.meta[src]['samples']
-            rate = samples[1] - samples[0]
-            vals = spectral_statistics(data, rate)
-        else:
-            raise ValueError('Unknown domain.')
+        arrs = [getattr(self, isrc)[pos] for isrc in src]
+        names = [' '.join([i, str(index)]) for i in src]
+        rate = self.meta[src[0]]['interval'] / 1e6
+        statistics_plot(arrs=arrs, stats=stats, rate=rate, names=names, figsize=figsize,
+                        save_to=save_to, **kwargs)
+        return self
 
-        titles = ['RMS', 'STD', 'TOTAL VARIATION', 'MODE']
-        show_statistics(vals, iline=iline, xline=xline, nrows=2, ncols=2,
-                        figsize=figsize, titles=titles, **kwargs)
+    @action
+    def standardize(self, src, dst):
+        """standardize traces to zero mean and unit variance.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the normalized traces.
+        """
+        data = np.concatenate(getattr(self, src))
+        std_data = (data - np.mean(data, axis=1, keepdims=True)) / (np.std(data, axis=1, keepdims=True) + 10 ** -6)
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(std_data, ind)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def picking_to_mask(self, src, dst, src_traces='raw'):
+        """Convert picking time to the mask for TraceIndex.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        src_traces : str
+            The batch components which contains traces.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the mask corresponds to the picking.
+        """
+        data = np.concatenate(getattr(self, src))
+
+        samples = self.meta[src_traces]['samples']
+        tick = samples[1] - samples[0]
+        data = np.around(data / tick).astype('int')
+
+        batch_size = data.shape[0]
+        trace_length = getattr(self, src_traces)[0].shape[1]
+        ind = tuple(np.array(list(zip(range(batch_size), data))).T)
+        ind[1][ind[1] < 0] = 0
+        mask = np.zeros((batch_size, trace_length))
+        mask[ind] = 1
+        dst_data = np.cumsum(mask, axis=1)
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(dst_data, ind)
+        dst_data = np.array([np.squeeze(i) for i in dst_data] + [None])[:-1]
+        setattr(self, dst, dst_data)
+        return self
+
+    @action
+    def mask_to_pick(self, src, dst, labels=True):
+        """Convert the mask to picking time. Piciking time corresponds to the
+        begininning of the longest block of consecutive ones in the mask.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        labels: bool, default: False
+            The flag indicates whether action's inputs probabilities or labels.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking times.
+        """
+        data = getattr(self, src)
+        if not labels:
+            data = np.argmax(data, axis=1)
+
+        dst_data = massive_block(data)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
+        return self
+
+    @action
+    def mcm(self, src, dst, eps=3, length_win=12):
+        """Creates for each trace corresponding Energy function.
+        Based on Coppens(1985) method.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+        eps: float, default: 3
+            Stabilization constant that helps reduce the rapid fluctuations of energy function.
+        length_win: int, default: 12
+            The leading window length.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the energy function.
+        """
+        trace = np.concatenate(getattr(self, src))
+        energy = np.cumsum(trace**2, axis=1)
+        long_win, lead_win = energy, energy
+        lead_win[:, length_win:] = lead_win[:, length_win:] - lead_win[:, :-length_win]
+        energy = lead_win / (long_win + eps)
+        self.add_components(dst, init=np.array([i for i in energy] + [None])[:-1])
+        return self
+
+    @action
+    def energy_to_picking(self, src, dst):
+        """Convert energy function of the trace to the picking time by taking derivative
+        and finding maximum.
+
+        Parameters
+        ----------
+        src : str
+            The batch components to get the data from.
+        dst : str
+            The batch components to put the result in.
+
+        Returns
+        -------
+        batch : SeismicBatch
+            Batch with the predicted picking by MCM method.
+        """
+        energy = np.stack(getattr(self, src))
+        energy = np.gradient(energy, axis=1)
+        picking = np.argmax(energy, axis=1)
+        self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
         return self
