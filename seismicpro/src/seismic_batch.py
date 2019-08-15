@@ -273,35 +273,6 @@ class SeismicBatch(Batch):
         getattr(self, dst)[i] = dst_data
 
     @action
-    @apply_to_each_component
-    def apply_transform(self, func, *args, src, dst=None, **kwargs):
-        """Apply a function to each item in the batch.
-
-        Parameters
-        ----------
-        func : callable
-            A function to apply. Must accept an item of ``src`` as its first argument.
-        src : str, array-like
-            The source to get the data from.
-        dst : str, array-like
-            The source to put the result in.
-        args : misc
-            Any additional positional arguments to ``func``.
-        kwargs : misc
-            Any additional named arguments to ``func``.
-
-        Returns
-        -------
-        batch : SeismicBatch
-            Transformed batch.
-        """
-        super().apply_transform(func, *args, src=src, dst=dst, **kwargs)
-        dst_data = getattr(self, dst)
-        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
-        return self
-
-
-    @action
     @inbatch_parallel(init="_init_component", target="threads")
     @apply_to_each_component
     def band_pass_filter(self, index, *args, src, dst=None, lowcut=None, highcut=None, fs=1, order=5):
@@ -810,11 +781,13 @@ class SeismicBatch(Batch):
 
     @action
     def correct_spherical_divergence(self, src, dst, speed, params, time=None):
-        """Correction of spherical divergence with given parameers or with optimal parameters. There are two
-        ways to use this funcion. The simplest way is to determine parameters then correction will be made
-        with given parameters. Another approach is to find the parameters by ```find_sdc_params``` function
-        from `SeismicDataset` class. In this case, optimal parameters can be stored in in dataset's
-        attribute or pipeline variable and then passed to this action as `params` argument.
+        """Correction of spherical divergence with given parameers or with optimal parameters. 
+        
+        There are two ways to use this funcion. The simplest way is to determine parameters then 
+        correction will be made with given parameters. Another approach is to find the parameters 
+        by ```find_sdc_params``` function from `SeismicDataset` class. In this case, optimal 
+        parameters can be stored in in dataset's attribute or pipeline variable and then passed 
+        to this action as `params` argument.
 
         Parameters
         ----------
