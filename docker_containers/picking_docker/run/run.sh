@@ -15,4 +15,3 @@ sudo docker run --rm \
   $@ ${image} \
   -p $path$segy -m $path$model -d $path$save_to -n ${num_zero} \
   -bs ${batch_size} -ts ${trace_len} -dvc ${device}
-  

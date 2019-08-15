@@ -63,8 +63,7 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
         The device used for inference. Can be 'gpu' in case of avaliavle GPU.
 
     """
-    index = FieldIndex(name='raw', path=path_raw)
-    data = SeismicDataset(TraceIndex(index))
+    data = SeismicDataset(TraceIndex(name='raw', path=path_raw))
 
     config_predict = {
         'build': False,
