@@ -1059,11 +1059,7 @@ class SeismicBatch(Batch):
 
     @action
     def standardize(self, src, dst):
-<<<<<<< HEAD
         """Standardize traces to zero mean and unit variance.
-=======
-        """standardize traces to zero mean and unit variance.
->>>>>>> edb2770f937af9e2ce6f70786b64fc21058bb948
 
         Parameters
         ----------
@@ -1209,8 +1205,7 @@ class SeismicBatch(Batch):
     @action
     @inbatch_parallel(init='_init_component')
     def equalize(self, index, src, dst, params, record_id=None):
-        """ Equalize amplitudes of different recordings in dataset.
-
+        """ Equalize amplitudes of different records in dataset.
 
         Parameters
         ----------
@@ -1218,10 +1213,10 @@ class SeismicBatch(Batch):
             The batch components to get the data from.
         dst : str
             The batch components to put the result in.
-        params : array, optimal
+        params : dict or NamedExpr
             Containter with parameters for equalization.
         record_id : str, optional
-            Column in index that indicates different records.
+            Column in index that indicate different records.
 
         Returns
         -------
@@ -1234,7 +1229,7 @@ class SeismicBatch(Batch):
 
         Raises
         ------
-        ValueError : If Index is not FieldIndex.
+        ValueError : If index is not FieldIndex.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
@@ -1244,9 +1239,17 @@ class SeismicBatch(Batch):
 
         if record_id is None:
             record_id = params['record_id']
-            
-        factor = params[self.index._idf[record_id][index].values[0]]
-        equalized_field = field / factor
 
-        getattr(self, src)[pos] = equalized_field
+        record = np.unique(self.index._idf.loc[index, record_id])
+        if len(record) == 1:
+            record = record[0]
+        else:
+            raise ValueError('Field {} contains more than one record!'.format(self.index.indices[0]))
+
+        p_5, p_95 = params[record]
+
+        # shifting and scaling data so that 5th and 95th percentiles are -1 and 1 respectively
+        equalized_field = 2 * (field - p_5) / (p_95 - p_5) - 1
+
+        getattr(self, dst)[pos] = equalized_field
         return self

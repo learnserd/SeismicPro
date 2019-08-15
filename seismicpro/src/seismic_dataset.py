@@ -1,6 +1,7 @@
 """File contains seismic dataset."""
 import numpy as np
 from scipy.optimize import minimize
+from tdigest import TDigest
 
 from ..batchflow import Dataset
 from ..src.seismic_index import FieldIndex
@@ -76,26 +77,33 @@ class SeismicDataset(Dataset):
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
 
-    def find_equalization_params(self, component, batch_size=1, record_id='fnum', p=0):
+    def find_equalization_params(self, batch, component, record_id='fnum', sample_size=10000,
+                                 container_name='equal_params', **kwargs):
         """ Calculate parameters for dataset equalization.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
 
-        records = np.unique(self.index._idf[record_id])
-        params = dict(zip(records, [[] for _ in records]))
-        
-        for batch in self.gen_batch(batch_size, n_epochs=1):
-            batch = batch.load(components=component, fmt='segy')
-            record = np.unique(batch.index._idf[record_id])
+        private_name = '_' + container_name
+        params = getattr(self, private_name, None)
+        if params is None:
+            records = np.unique(self.index._idf[record_id])
+            delta, K = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
+            params = dict(zip(records, [TDigest(delta, K) for _ in records]))
+            params['record_id'] = record_id
+            setattr(self, private_name, params)
+
+        for idx in batch.indices:
+            record = np.unique(batch.index._idf.loc[idx, record_id])
             if len(record) == 1:
                 record = record[0]
             else:
                 raise ValueError('Field {} contains more than one record!'.format(batch.index.indices[0]))
-            params[record].append(getattr(batch, component)[0].reshape(-1))
 
-        for record, values in params.items():
-            values = np.concatenate(values)
-            params[record] = np.percentile(np.abs(values), 90)
-        params['record_id'] = record_id
-        return params
+            pos = batch.index.get_pos(idx)
+            sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
+
+            params[record].batch_update(sample)
+
+        statistics = dict([record, (digest.percentile(5), digest.percentile(95))] for record, digest in params.items())
+        setattr(self, container_name, statistics)
