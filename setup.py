@@ -30,13 +30,15 @@ setup(
         'tdigest>=0.5.2.2',
         'tqdm==4.30.0',
         'segyio==1.8.3',
+        'scikit-image>=0.13.1',
+        'numba>=0.35.0'
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.12'],
         'tensorflow-gpu': ['tensorflow-gpu>=1.12'],
         'keras': ['keras>=2.0.0'],
         'torch': ['torch>=1.0.0'],
-        'hmmlearn': ['hmmlearn==0.2.0']
+        'hmmlearn': ['hmmlearn==0.2.0'],
     },
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -48,6 +50,6 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-        'Topic :: Scientific/Engineering'
+        'Topic :: Scientific/Engineering',
     ],
 )
