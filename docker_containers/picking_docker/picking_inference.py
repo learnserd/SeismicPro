@@ -12,7 +12,7 @@ sys.path.append('../..')
 
 from seismicpro.batchflow import Dataset, B
 from seismicpro.batchflow.models.torch import UNet
-from seismicpro.src import FieldIndex, TraceIndex, SeismicBatch
+from seismicpro.src import FieldIndex, TraceIndex, SeismicDataset
 
 def make_prediction():
     """ Read the model and data paths and run inference pipeline.
@@ -29,7 +29,7 @@ def make_prediction():
     parser.add_argument('-bs', '--batch_size', type=int, help="The number of traces in \
                         the batch for inference stage.", default=1000)
     parser.add_argument('-ts', '--trace_len', type=int, help="The number of first samples \
-                        of the trace to load.", default=750)
+                        of the trace to load.", default=751)
     parser.add_argument('-dvc', '--device', type=str or torch.device, help="The device for \
                         inference. Can be 'cpu' or 'gpu'.", default=torch.device('cpu'))
     args = parser.parse_args()
@@ -64,7 +64,7 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
 
     """
     index = FieldIndex(name='raw', path=path_raw)
-    data = Dataset(TraceIndex(index), SeismicBatch)
+    data = SeismicDataset(TraceIndex(index))
 
     config_predict = {
         'build': False,

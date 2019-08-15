@@ -1,7 +1,8 @@
 FROM analysiscenter1/ds-py3:cpu
 MAINTAINER Roman Kh <rhudor@gmail.com>
 
-COPY . /notebooks/SeismicPro
+COPY docker_containers/ /notebooks/SeismicPro/docker_containers
+COPY seismicpro/ /notebooks/SeismicPro/seismicpro
 
 WORKDIR /notebooks/SeismicPro/docker_containers/picking_docker
 
