@@ -77,9 +77,39 @@ class SeismicDataset(Dataset):
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
 
-    def find_equalization_params(self, batch, component, record_id='fnum', sample_size=10000,
+    def find_equalization_params(self, batch, component, record_id_col='fnum', sample_size=10000,
                                  container_name='equal_params', **kwargs):
-        """ Calculate parameters for dataset equalization.
+        """ Estimates 5th and 95th percentiles for each record in dataset for equalization.
+
+        This method utilizes t-digest structure for batch-wise estimation of rank-based statistics.
+
+        Parameters
+        ----------
+        batch : SeismicBatch
+            Current batch from pipeline.
+        component : str
+            Component with fields.
+        record_id_col : str, optional
+            Column in index that indicate different records.
+            Default is 'fnum'.
+        sample_size: int, optional
+            Number of elements to draw from each field to update
+            estimates if TDigest. Time for each update grows linearly
+            with `sample_size`. Default is 10000.
+        container_name: str, optional
+            Name of the `SeismicDataset` attribute to store a dict
+            with estimated percentiles.
+        kwargs: misc
+            Parameters for TDigest objects.
+
+        Raises
+        ------
+        ValueError : If index is not FieldIndex.
+        ValueError : If field with same id is contained in multiple records.
+
+        Note
+        ----
+        Dictoinary with estimated percentiles can be obtained from pipeline using `D(container_name)`.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
@@ -87,14 +117,13 @@ class SeismicDataset(Dataset):
         private_name = '_' + container_name
         params = getattr(self, private_name, None)
         if params is None:
-            records = np.unique(self.index._idf[record_id])
-            delta, K = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
-            params = dict(zip(records, [TDigest(delta, K) for _ in records]))
-            params['record_id'] = record_id
+            records = np.unique(self.index._idf[record_id_col])    # pylint: disable=protected-access
+            delta, k = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
+            params = dict(zip(records, [TDigest(delta, k) for _ in records]))
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            record = np.unique(batch.index._idf.loc[idx, record_id])
+            record = np.unique(batch.index._idf.loc[idx, record_id_col])    # pylint: disable=protected-access
             if len(record) == 1:
                 record = record[0]
             else:
@@ -105,5 +134,7 @@ class SeismicDataset(Dataset):
 
             params[record].batch_update(sample)
 
-        statistics = dict([record, (digest.percentile(5), digest.percentile(95))] for record, digest in params.items())
+        statistics = dict([record, (digest.percentile(5), digest.percentile(95))]
+                          for record, digest in params.items() if digest.n > 0)
+        statistics['record_id_col'] = record_id_col
         setattr(self, container_name, statistics)

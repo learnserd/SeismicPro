@@ -1204,8 +1204,22 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init='_init_component')
-    def equalize(self, index, src, dst, params, record_id=None):
+    def equalize(self, index, src, dst, params, record_id_col=None):
         """ Equalize amplitudes of different records in dataset.
+
+        Most convenient way to use this method is to use `SeismicDataset`'s
+        method 'find_equalization_params'. It estimates 5th and 95th
+        percentiles for each record and saves it to `SeismicDataset`
+        attribute as `dict`:
+
+        {record_name: (5th_perc, 95th_perc), ...},
+
+        where `5th_perc` and `95_perc` are numeric. Then, one can pass it
+        in this method using `params` argument set to `D('attr_name')`,
+        where 'attr_name' is a `SeismicDataset`'s attribute containing
+        the dictoinary.
+
+        Other way is to provide user-defined dictionary to `params` argument.
 
         Parameters
         ----------
@@ -1215,21 +1229,26 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         params : dict or NamedExpr
             Containter with parameters for equalization.
-        record_id : str, optional
-            Column in index that indicate different records.
+        record_id_col : str, optional
+            Column in index that indicate different record names.
+            Optional if `params` is a result of `SeismicDataset`'s
+            method `find_equalization_params`.
 
         Returns
         -------
             : SeismicBatch
             Batch of fields with equalized data.
 
-        Note
-        ----
-        Works properly only with FieldIndex. 
-
         Raises
         ------
         ValueError : If index is not FieldIndex.
+        ValueError : If field with same id is contained in multiple records.
+
+        Note
+        ----
+        Works properly only with FieldIndex.
+        If `params` dict is user-defined, `record_id_col` should be
+        provided excplicitly.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
@@ -1237,10 +1256,10 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        if record_id is None:
-            record_id = params['record_id']
+        if record_id_col is None:
+            record_id_col = params['record_id_col']
 
-        record = np.unique(self.index._idf.loc[index, record_id])
+        record = np.unique(self.index._idf.loc[index, record_id_col])    # pylint: disable=protected-access
         if len(record) == 1:
             record = record[0]
         else:
