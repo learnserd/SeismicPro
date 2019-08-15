@@ -1,4 +1,4 @@
-"""Seismic batch tools."""
+""" Seismic batch tools """
 import functools
 import numpy as np
 import pandas as pd
@@ -610,6 +610,7 @@ def calc_v_rms(t, speed):
     Value calculated by following formula:
 
     $$ V_{rms} = \left(\frac{\sum_0^t V^2}{|V|} \right)^{1/2} $$
+    Where $|V|$ is a number of elements in V.
 
     Parameters
     ----------
@@ -624,9 +625,7 @@ def calc_v_rms(t, speed):
         : float
         $V_{rms}$
     """
-    if t == 0:
-        return speed[0]
-    return (np.mean(speed[:t]**2))**.5
+    return (np.mean(speed[:t+1]**2))**.5
 
 def calc_sdc(ix, time, speed, v_pow, t_pow):
     """ Calculate spherical divergence correction (SDC).
@@ -640,8 +639,10 @@ def calc_sdc(ix, time, speed, v_pow, t_pow):
     ----------
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     v_pow : float or int
         Speed's power.
     t_pow : float or int
@@ -666,8 +667,10 @@ def calculate_sdc_for_field(field, time, speed, v_pow=2, t_pow=1):
         Field for correction.
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     v_pow : float or int
         Speed's power.
     t_pow : float or int
@@ -715,7 +718,8 @@ def measure_gain_amplitude(field, window):
 
 def calculate_sdc_quality(parameters, field, time, speed, window=51):
     """Calculate the quality of estimated parameters.
-    The qualiry caluclated as the median of the first order gradient module.
+
+    The quality caluclated as the median of absolute value of the first order derivative.
 
     Parameters
     ----------
@@ -725,8 +729,10 @@ def calculate_sdc_quality(parameters, field, time, speed, window=51):
         Field for compensation.
     time : array
         Trace time values.
+        Time measured in either in samples or in milliseconds.
     speed : array
         Wave propagation speed depending on the depth.
+        Speed is measured in samples.
     window : int, default 51
         Size of smoothing window of the median filter.
 

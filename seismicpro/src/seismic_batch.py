@@ -497,7 +497,7 @@ class SeismicBatch(Batch):
         batch : SeismicBatch
             Batch unchanged.
         """
-        data = getattr(self, src).astype('int')
+        data = getattr(self, src).astype(int)
         if to_samples:
             data = self.meta[traces]['samples'][data]
 
@@ -510,7 +510,7 @@ class SeismicBatch(Batch):
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
-        df['timeOffset'] = data
+        df['timeOffset'] = data.astype(int)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
 
@@ -824,10 +824,12 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         speed : array
             Wave propagation speed depending on the depth.
+            Speed is measured in milliseconds.
         params : array of floats(or ints) with length 2
             Containter with parameters in the following order: [v_pow, t_pow].
-        time : array, optimal
-           Trace time values. The default is self.meta[src]['samples'].
+        time : array, optional
+            Trace time values. If `None` defaults to self.meta[src]['samples'].
+            Time measured in either in samples or in milliseconds.
 
         Returns
         -------
@@ -1057,7 +1059,11 @@ class SeismicBatch(Batch):
 
     @action
     def standardize(self, src, dst):
+<<<<<<< HEAD
         """Standardize traces to zero mean and unit variance.
+=======
+        """standardize traces to zero mean and unit variance.
+>>>>>>> edb2770f937af9e2ce6f70786b64fc21058bb948
 
         Parameters
         ----------
@@ -1161,7 +1167,7 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         eps: float, default: 3
             Stabilization constant that helps reduce the rapid fluctuations of energy function.
-        l: int, default: 12
+        length_win: int, default: 12
             The leading window length.
 
         Returns

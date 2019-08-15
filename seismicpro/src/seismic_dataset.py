@@ -13,16 +13,17 @@ class SeismicDataset(Dataset):
     def __init__(self, index, batch_class=SeismicBatch, preloaded=None, *args, **kwargs):
         super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
 
-    def find_sdc_params(self, components, speed, loss, indices=None, time=None, initial_point=None,
+    def find_sdc_params(self, component, speed, loss, indices=None, time=None, initial_point=None,
                         method='Powell', bounds=None, tslice=None, **kwargs):
         """ Finding an optimal parameters for correction of spherical divergence.
 
         Parameters
         ----------
-        components : str or array-like, optional
-            Components to load.
+        component : str
+            Component with fields.
         speed : array
             Wave propagation speed depending on the depth.
+            Speed is measured in milliseconds.
         loss : callable
             Function to minimize.
         indices : array-like, optonal
@@ -30,6 +31,7 @@ class SeismicDataset(Dataset):
             If `None`, defaults to first element of dataset.
         time : array, optional
            Trace time values. If `None` defaults to self.meta[src]['samples'].
+           Time measured in either in samples or in milliseconds.
         initial_point : array of 2
             Started values for $v_{pow}$ and $t_{pow}$.
             If None defaults to $v_{pow}=2$ and $t_{pow}=1$.
@@ -59,9 +61,9 @@ class SeismicDataset(Dataset):
         if indices is None:
             indices = self.indices[:1]
 
-        batch = self.create_batch(indices).load(components=components, fmt='segy', tslice=tslice)
-        field = batch.raw[0]
-        samples = batch.meta['raw']['samples']
+        batch = self.create_batch(indices).load(components=component, fmt='segy', tslice=tslice)
+        field = getattr(batch, component)[0]
+        samples = batch.meta[component]['samples']
 
         bounds = ((0, 5), (0, 5)) if bounds is None else bounds
         initial_point = (2, 1) if initial_point is None else initial_point
