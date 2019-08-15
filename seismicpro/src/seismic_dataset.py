@@ -48,6 +48,10 @@ class SeismicDataset(Dataset):
         -------
             : array
             Coefficients for speed and time.
+            
+        Raises
+        ------
+        ValueError : If Index is not FieldIndex.
 
         Note
         ----
