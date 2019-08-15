@@ -89,7 +89,7 @@ class SeismicDataset(Dataset):
 
         Parameters
         ----------
-        batch : SeismicBatch
+        batch : SeismicBatch or B() named expression.
             Current batch from pipeline.
         component : str
             Component with fields.

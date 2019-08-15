@@ -1180,19 +1180,19 @@ class SeismicBatch(Batch):
     def equalize(self, index, src, dst, params, record_id_col=None):
         """ Equalize amplitudes of different records in dataset.
 
-        Most convenient way to use this method is to use `SeismicDataset`'s
-        method 'find_equalization_params'. It estimates 5th and 95th
-        percentiles for each record and saves it to `SeismicDataset`
+        One way to run this method is to use `SeismicDataset`'s
+        method 'find_equalization_params', which estimates 5th and 95th
+        percentiles for each record and saves them to `SeismicDataset`
         attribute as `dict`:
 
         {record_name: (5th_perc, 95th_perc), ...},
 
-        where `5th_perc` and `95_perc` are numeric. Then, one can pass it
-        in this method using `params` argument set to `D('attr_name')`,
+        where `5th_perc` and `95_perc` are numeric. Then, one can pass this
+        dict in present method by setting `params` to `D('attr_name')`,
         where 'attr_name' is a `SeismicDataset`'s attribute containing
         the dictoinary.
 
-        Other way is to provide user-defined dictionary to `params` argument.
+        Other way is to provide user-defined dictionary for `params` argument.
 
         Parameters
         ----------
