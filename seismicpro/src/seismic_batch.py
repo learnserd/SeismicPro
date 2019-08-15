@@ -781,12 +781,12 @@ class SeismicBatch(Batch):
 
     @action
     def correct_spherical_divergence(self, src, dst, speed, params, time=None):
-        """Correction of spherical divergence with given parameers or with optimal parameters. 
-        
-        There are two ways to use this funcion. The simplest way is to determine parameters then 
-        correction will be made with given parameters. Another approach is to find the parameters 
-        by ```find_sdc_params``` function from `SeismicDataset` class. In this case, optimal 
-        parameters can be stored in in dataset's attribute or pipeline variable and then passed 
+        """Correction of spherical divergence with given parameers or with optimal parameters.
+
+        There are two ways to use this funcion. The simplest way is to determine parameters then
+        correction will be made with given parameters. Another approach is to find the parameters
+        by ```find_sdc_params``` function from `SeismicDataset` class. In this case, optimal
+        parameters can be stored in in dataset's attribute or pipeline variable and then passed
         to this action as `params` argument.
 
         Parameters
