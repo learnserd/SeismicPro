@@ -1180,17 +1180,24 @@ class SeismicBatch(Batch):
     def equalize(self, index, src, dst, params, record_id_col=None):
         """ Equalize amplitudes of different records in dataset.
 
-        One way to run this method is to use `SeismicDataset`'s
-        method 'find_equalization_params', which estimates 5th and 95th
-        percentiles for each record and saves them to `SeismicDataset`
-        attribute as `dict`:
+        In context of amplitude equalization we define "records" as seismic
+        surveys taken in different years and/or with different equipment.
+
+        This method performs quantile normalization by shifting and
+        scaling data in each batch item so that 90% of values of whole
+        record that item belongs to lie between -1 and 1.
+
+        `params` argument should contain a dictionary in a following form:
 
         {record_name: (5th_perc, 95th_perc), ...},
 
-        where `5th_perc` and `95_perc` are numeric. Then, one can pass this
-        dict in present method by setting `params` to `D('attr_name')`,
-        where 'attr_name' is a `SeismicDataset`'s attribute containing
-        the dictoinary.
+        where `5th_perc` and `95_perc` are estimates for 5th and 95th
+        percentiles for each record.
+
+        One way to obtain such a dictionary is to use
+        `SeismicDataset.find_equalization_params' method, which calculates
+        esimated and saves them to `SeismicDataset`'s attribute. This method
+        can be used from pipeline.
 
         Other way is to provide user-defined dictionary for `params` argument.
 
@@ -1221,7 +1228,8 @@ class SeismicBatch(Batch):
         ----
         Works properly only with FieldIndex.
         If `params` dict is user-defined, `record_id_col` should be
-        provided excplicitly.
+        provided excplicitly either as argument, or as `params` dict key-value
+        pair.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))

@@ -85,7 +85,11 @@ class SeismicDataset(Dataset):
                                  container_name='equal_params', **kwargs):
         """ Estimates 5th and 95th percentiles for each record in dataset for equalization.
 
-        This method utilizes t-digest structure for batch-wise estimation of rank-based statistics.
+        In context of amplitude equalization we define "records" as seismic surveys taken in
+        different years and/or with different equipment.
+
+        This method utilizes t-digest structure for batch-wise estimation of rank-based statistics,
+        namely 5th and 95th percentiles.
 
         Parameters
         ----------
@@ -102,7 +106,8 @@ class SeismicDataset(Dataset):
             with `sample_size`. Default is 10000.
         container_name: str, optional
             Name of the `SeismicDataset` attribute to store a dict
-            with estimated percentiles.
+            with estimated percentiles. Also contains `record_id_col`
+            key and corresponding value.
         kwargs: misc
             Parameters for TDigest objects.
 
