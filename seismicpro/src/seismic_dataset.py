@@ -126,19 +126,19 @@ class SeismicDataset(Dataset):
         private_name = '_' + container_name
         params = getattr(self, private_name, None)
         if params is None:
-            records = np.unique(self.index._idf[record_id_col])    # pylint: disable=protected-access
+            records = np.unique(self.index.get_df()[record_id_col])    # pylint: disable=protected-access
             delta, k = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
             params = dict(zip(records, [TDigest(delta, k) for _ in records]))
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            record = np.unique(batch.index._idf.loc[idx, record_id_col])    # pylint: disable=protected-access
+            record = np.unique(batch.index.get_df().loc[idx, record_id_col])    # pylint: disable=protected-access
             if len(record) == 1:
                 record = record[0]
             else:
-                raise ValueError('Field {} contains more than one record!'.format(batch.index.indices[0]))
+                raise ValueError('Field {} contains more than one record!'.format(batch.indices[0]))
 
-            pos = batch.index.get_pos(idx)
+            pos = batch.get_pos(idx)
             sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
 
             params[record].batch_update(sample)
