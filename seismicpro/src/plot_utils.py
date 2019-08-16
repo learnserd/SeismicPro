@@ -1,9 +1,9 @@
-"""Utils."""
+""" Utilily functions for visualization """
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches, colors as mcolors
-
+from .utils import measure_gain_amplitude
 
 class IndexTracker:
     """Provides onscroll and update methods for matplotlib scroll_event."""
@@ -44,8 +44,8 @@ class IndexTracker:
             self.ax.set_xlim([0, img.shape[0]])
 
 def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                 pts=None, s=None, c=None, names=None, figsize=None,
-                 save_to=None, dpi=None, **kwargs):
+                 pts=None, s=None, scatter_color=None, names=None, figsize=None,
+                 save_to=None, dpi=None, line_color=None, title=None, **kwargs):
     """Plot seismic traces.
 
     Parameters
@@ -64,7 +64,7 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         The points data positions.
     s : scalar or array_like, shape (n, ), optional
         The marker size in points**2.
-    c : color, sequence, or sequence of color, optional
+    scatter_color : color, sequence, or sequence of color, optional
         The marker color.
     names : str or array-like, optional
         Title names to identify subplots.
@@ -74,12 +74,23 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         If not None, save plot to given path.
     dpi : int, optional, default: None
         The resolution argument for matplotlib.pyplot.savefig.
+    line_color : color, sequence, or sequence of color, optional, default: None
+        The trace color.
+    title : str
+        Plot title.
     kwargs : dict
         Additional keyword arguments for plot.
 
     Returns
     -------
     Multi-column subplots.
+
+    Raises
+    ------
+    ValueError
+        If ```trace_col``` is sequence and it lenght is not equal to the number of traces.
+        If dimensions of given ```arrs``` not in [1, 2].
+
     """
     if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
         arrs = (arrs,)
@@ -87,8 +98,10 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
     if isinstance(names, str):
         names = (names,)
 
-    _, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
+    line_color = 'k' if line_color is None else line_color
+    fig, ax = plt.subplots(1, len(arrs), figsize=figsize, squeeze=False)
     for i, arr in enumerate(arrs):
+
         if not wiggle:
             arr = np.squeeze(arr)
 
@@ -101,11 +114,19 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
 
             if wiggle:
                 offsets = np.arange(*xlim)
+
+                if isinstance(line_color, str):
+                    line_color = [line_color] * len(offsets)
+
+                if len(line_color) != len(offsets):
+                    raise ValueError("Lenght of line_color must be equal to the number of traces.")
+
                 y = np.arange(*ylim)
-                for k in offsets:
+                for ix, k in enumerate(offsets):
                     x = k + std * arr[k, slice(*ylim)] / np.std(arr)
-                    ax[0, i].plot(x, y, 'k-')
-                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color='k')
+                    col = line_color[ix]
+                    ax[0, i].plot(x, y, '{}-'.format(col))
+                    ax[0, i].fill_betweenx(y, k, x, where=(x > k), color=col)
 
             else:
                 ax[0, i].imshow(arr.T, **kwargs)
@@ -114,9 +135,6 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
             ax[0, i].plot(arr, **kwargs)
         else:
             raise ValueError('Invalid ndim to plot data.')
-
-        if pts is not None:
-            ax[0, i].scatter(*pts, s=s, c=c)
 
         if names is not None:
             ax[0, i].set_title(names[i])
@@ -129,11 +147,15 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
         if arr.ndim == 1:
             plt.xlim(xlim)
 
+        if pts is not None:
+            ax[0, i].scatter(*pts, s=s, c=scatter_color)
+
         ax[0, i].set_aspect('auto')
 
+    if title is not None:
+        fig.suptitle(title)
     if save_to is not None:
         plt.savefig(save_to, dpi=dpi)
-
     plt.show()
 
 def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
@@ -197,59 +219,139 @@ def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,
 
     plt.show()
 
-def show_statistics(data, iline, xline, nrows=1, ncols=1, 
-                    figsize=None, titles=None, **kwargs):
-    """Show statistics in 2D plots.
+def gain_plot(arrs, window=51, xlim=None, ylim=None, figsize=None, names=None, **kwargs):# pylint: disable=too-many-branches
+    r"""Gain's graph plots the ratio of the maximum mean value of
+    the amplitude to the mean value of the smoothed amplitude at the moment t.
+
+    First of all for each trace the smoothed version calculated by following formula:
+        $$Am = \sqrt{\mathcal{H}(Am)^2 + Am^2}, \ where$$
+    Am - Amplitude of trace.
+    $\mathcal{H}$ - is a Hilbert transformaion.
+
+    Then the average values of the amplitudes (Am) at each time (t) are calculated.
+    After it the resulted value received from the following equation:
+
+        $$ G(t) = - \frac{\max{(Am)}}{Am(t)} $$
 
     Parameters
     ----------
-    data : array-like
-        Arrays of statistics to show.
-    iline : array-like
-        Array of inline numbers.
-    xline : array-like
-        Array of crossline numbers.
-    nrows : int
-        Number of rows for subplots.
-    ncols : int
-        Number of columns in subplots.
+    sample : array-like
+        Seismogram.
+    window : int, default 51
+        Size of smoothing window of the median filter.
+    xlim : tuple or list with size 2
+        Bounds for plot's x-axis.
+    ylim : tuple or list with size 2
+        Bounds for plot's y-axis.
     figsize : array-like, optional
         Output plot size.
-    titles : array of strings
-        Titles for subplots.
+    names : str or array-like, optional
+        Title names to identify subplots.
+
+    Returns
+    -------
+    Gain's plot.
+    """
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
+
+    _, ax = plt.subplots(1, len(arrs), figsize=figsize)
+    ax = ax.reshape(-1) if isinstance(ax, np.ndarray) else [ax]
+
+    for ix, sample in enumerate(arrs):
+        result = measure_gain_amplitude(sample, window)
+        ax[ix].plot(result, range(len(result)), **kwargs)
+        if names is not None:
+            ax[ix].set_title(names[ix])
+        if xlim is None:
+            set_xlim = (max(result)-min(result)*.1, max(result)+min(result)*1.1)
+        elif isinstance(xlim[0], (int, float)):
+            set_xlim = xlim
+        elif len(xlim) != len(arrs):
+            raise ValueError('Incorrect format for xbounds.')
+        else:
+            set_xlim = xlim[ix]
+
+        if ylim is None:
+            set_ylim = (len(result)+100, -100)
+        elif isinstance(ylim[0], (int, float)):
+            set_ylim = ylim
+        elif len(ylim) != len(arrs):
+            raise ValueError('Incorrect format for ybounds.')
+        else:
+            set_ylim = ylim[ix]
+
+        ax[ix].set_ylim(set_ylim)
+        ax[ix].set_xlim(set_xlim)
+        ax[ix].set_xlabel('Maxamp/Amp')
+        ax[ix].set_ylabel('Time')
+    plt.show()
+
+def statistics_plot(arrs, stats, rate=None, figsize=None, names=None,
+                    save_to=None, **kwargs):
+    """Show seismograms and various trace statistics, e.g. rms amplitude and rms frequency.
+
+    Parameters
+    ----------
+    arrs : array-like
+        Seismogram or sequence of seismograms.
+    stats : str, callable or array-like
+        Name of statistics in statistics zoo, custom function to be avaluated or array of stats.
+    rate : scalar
+        Sampling rate for spectral statistics.
+    figsize : array-like, optional
+        Output plot size.
+    names : str or array-like, optional
+        Title names to identify subplots.
+    save_to : str or None, optional
+        If not None, save plot to given path.
     kwargs : dict
         Named argumets to matplotlib.pyplot.imshow.
 
     Returns
     -------
-    Plots of statistics distribution.
+    Plots of seismorgams and trace statistics.
     """
-    if (ncols == 1) and (nrows == 1):
-        data = np.atleast_2d(data)
+    def rms_freq(x, rate):
+        "Calculate rms frequency."
+        spec = abs(np.fft.rfft(x, axis=1))**2
+        spec = spec / spec.sum(axis=1).reshape((-1, 1))
+        freqs = np.fft.rfftfreq(len(x[0]), d=rate)
+        return  np.sqrt((freqs**2 * spec).sum(axis=1))
 
-    enc = preprocessing.LabelEncoder()
-    x = enc.fit_transform(iline)
-    xc = enc.classes_
-    y = enc.fit_transform(xline)
-    yc = enc.classes_
-    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-    im = np.zeros((len(xc), len(yc)))
-    for i, ax in enumerate(axes.reshape(-1)):
-        im[x, y] = data[i]
-        plot = ax.imshow(im.T, **kwargs)
-        step = len(xc) // 9
-        ax.set_xticks(np.arange(0, len(xc), step))
-        ax.set_xticklabels(xc[::step])
-        step = len(yc) // 9
-        ax.set_yticks(np.arange(0, len(yc), step))
-        ax.set_yticklabels(yc[::step])
-        ax.set_aspect('auto')
-        ax.set_xlabel('INLINE') # pylint: disable=expression-not-assigned
-        ax.set_ylabel('CROSSLINE') # pylint: disable=expression-not-assigned
-        if titles is not None:
-            ax.set_title(titles[i])
+    statistics_zoo = dict(ma_ampl=lambda x, *args: np.mean(abs(x), axis=1),
+                          rms_ampl=lambda x, *args: np.sqrt(np.mean(x**2, axis=1)),
+                          std_ampl=lambda x, *args: np.std(x, axis=1),
+                          rms_freq=rms_freq)
 
-        fig.colorbar(plot, ax=ax)
+    if isinstance(arrs, np.ndarray) and arrs.ndim == 2:
+        arrs = (arrs,)
+
+    if isinstance(stats, str) or callable(stats):
+        stats = (stats,)
+
+    if isinstance(names, str):
+        names = (names,)
+
+    _, ax = plt.subplots(2, len(arrs), figsize=figsize, squeeze=False)
+    for i, arr in enumerate(arrs):
+        for k in stats:
+            if isinstance(k, str):
+                func, label = statistics_zoo[k], k
+            else:
+                func, label = k, k.__name__
+
+            ax[0, i].plot(func(arr, rate), label=label)
+
+        ax[0, i].legend()
+        ax[0, i].set_xlim([0, len(arr)])
+        ax[0, i].set_aspect('auto')
+        ax[0, i].set_title(names[i] if names is not None else '')
+        ax[1, i].imshow(arr.T, **kwargs)
+        ax[1, i].set_aspect('auto')
+
+    if save_to is not None:
+        plt.savefig(save_to)
 
     plt.show()
 
@@ -287,7 +389,7 @@ def show_research(df, layout=None, average_repetitions=False, log_scale=False, r
     if color is None:
         color = list(mcolors.CSS4_COLORS.keys())
     df_len = len(df['config'].unique())
-    replace = False if len(color) > df_len else True
+    replace = not len(color) > df_len
     chosen_colors = np.random.choice(color, replace=replace, size=df_len)
 
     _, ax = plt.subplots(1, len(layout), figsize=(9 * len(layout), 7))
