@@ -1184,15 +1184,15 @@ class SeismicBatch(Batch):
         surveys taken in different years and/or with different equipment.
 
         This method performs quantile normalization by shifting and
-        scaling data in each batch item so that 90% of values of whole
-        record that item belongs to lie between -1 and 1.
+        scaling data in each batch item so that 95% of absolute values of
+        whole record that item belongs to lie between 0 and 1.
 
         `params` argument should contain a dictionary in a following form:
 
-        {record_name: (5th_perc, 95th_perc), ...},
+        {record_name: 95th_perc, ...},
 
-        where `5th_perc` and `95_perc` are estimates for 5th and 95th
-        percentiles for each record.
+        where `95_perc` is an estimate for 95th percentile of absolute
+        values for record with `record_name`.
 
         One way to obtain such a dictionary is to use
         `SeismicDataset.find_equalization_params' method, which calculates
@@ -1246,10 +1246,10 @@ class SeismicBatch(Batch):
         else:
             raise ValueError('Field {} contains more than one record!'.format(self.indices[0]))
 
-        p_5, p_95 = params[record]
+        p_95 = params[record]
 
         # shifting and scaling data so that 5th and 95th percentiles are -1 and 1 respectively
-        equalized_field = 2 * (field - p_5) / (p_95 - p_5) - 1
+        equalized_field = field / p_95
 
         getattr(self, dst)[pos] = equalized_field
         return self

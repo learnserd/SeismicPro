@@ -83,13 +83,13 @@ class SeismicDataset(Dataset):
 
     def find_equalization_params(self, batch, component, record_id_col='fnum', sample_size=10000,
                                  container_name='equal_params', **kwargs):
-        """ Estimates 5th and 95th percentiles for each record in dataset for equalization.
+        """ Estimates 95th percentile of absolute values for each record in dataset for equalization.
 
         In context of amplitude equalization we define "records" as seismic surveys taken in
         different years and/or with different equipment.
 
         This method utilizes t-digest structure for batch-wise estimation of rank-based statistics,
-        namely 5th and 95th percentiles.
+        namely 95th percentile.
 
         Parameters
         ----------
@@ -106,7 +106,7 @@ class SeismicDataset(Dataset):
             with `sample_size`. Default is 10000.
         container_name: str, optional
             Name of the `SeismicDataset` attribute to store a dict
-            with estimated percentiles. Also contains `record_id_col`
+            with estimated percentile. Also contains `record_id_col`
             key and corresponding value.
         kwargs: misc
             Parameters for TDigest objects.
@@ -118,7 +118,7 @@ class SeismicDataset(Dataset):
 
         Note
         ----
-        Dictoinary with estimated percentiles can be obtained from pipeline using `D(container_name)`.
+        Dictoinary with estimated percentile can be obtained from pipeline using `D(container_name)`.
         """
         if not isinstance(self.index, FieldIndex):
             raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
@@ -141,9 +141,9 @@ class SeismicDataset(Dataset):
             pos = batch.get_pos(idx)
             sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
 
-            params[record].batch_update(sample)
+            params[record].batch_update(np.absolute(sample))
 
-        statistics = dict([record, (digest.percentile(5), digest.percentile(95))]
+        statistics = dict([record, digest.percentile(95)]
                           for record, digest in params.items() if digest.n > 0)
         statistics['record_id_col'] = record_id_col
         setattr(self, container_name, statistics)
