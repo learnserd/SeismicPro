@@ -1240,11 +1240,11 @@ class SeismicBatch(Batch):
         if record_id_col is None:
             record_id_col = params['record_id_col']
 
-        record = np.unique(self.index.get_df().loc[index, record_id_col])    # pylint: disable=protected-access
+        record = np.unique(self.index.get_df(index=index)[record_id_col])    # pylint: disable=protected-access
         if len(record) == 1:
             record = record[0]
         else:
-            raise ValueError('Field {} contains more than one record!'.format(self.index.indices[0]))
+            raise ValueError('Field {} contains more than one record!'.format(self.indices[0]))
 
         p_5, p_95 = params[record]
 

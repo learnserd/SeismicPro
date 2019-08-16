@@ -132,7 +132,7 @@ class SeismicDataset(Dataset):
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            record = np.unique(batch.index.get_df().loc[idx, record_id_col])    # pylint: disable=protected-access
+            record = np.unique(batch.index.get_df(index=idx)[record_id_col])    # pylint: disable=protected-access
             if len(record) == 1:
                 record = record[0]
             else:
