@@ -81,7 +81,7 @@ class SeismicDataset(Dataset):
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
 
-    def find_equalization_params(self, batch, component, record_id_col='fnum', sample_size=10000,
+    def find_equalization_params(self, batch, component, record_id_col, sample_size=10000,
                                  container_name='equal_params', **kwargs):
         """ Estimates 95th percentile of absolute values for each record in dataset for equalization.
 
@@ -97,9 +97,8 @@ class SeismicDataset(Dataset):
             Current batch from pipeline.
         component : str
             Component with fields.
-        record_id_col : str, optional
+        record_id_col : str
             Column in index that indicate different records.
-            Default is 'fnum'.
         sample_size: int, optional
             Number of elements to draw from each field to update
             estimates if TDigest. Time for each update grows linearly
