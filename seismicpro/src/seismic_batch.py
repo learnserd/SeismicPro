@@ -1177,22 +1177,19 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init='_init_component')
-    def equalize(self, index, src, dst, params, record_id_col=None):
-        """ Equalize amplitudes of different records in dataset.
-
-        In context of amplitude equalization we define "records" as seismic
-        surveys taken in different years and/or with different equipment.
+    def equalize(self, index, src, dst, params, survey_id_col=None):
+        """ Equalize amplitudes of different seismic surveys in dataset.
 
         This method performs quantile normalization by shifting and
-        scaling data in each batch item so that 95% of absolute values of
-        whole record that item belongs to lie between 0 and 1.
+        scaling data in each batch item so that 95% of absolute values
+        seismic surveys that item belongs to lie between 0 and 1.
 
         `params` argument should contain a dictionary in a following form:
 
-        {record_name: 95th_perc, ...},
+        {survey_name: 95th_perc, ...},
 
         where `95_perc` is an estimate for 95th percentile of absolute
-        values for record with `record_name`.
+        values for seismic survey with `survey_name`.
 
         One way to obtain such a dictionary is to use
         `SeismicDataset.find_equalization_params' method, which calculates
@@ -1209,8 +1206,9 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         params : dict or NamedExpr
             Containter with parameters for equalization.
-        record_id_col : str, optional
-            Column in index that indicate different record names.
+        survey_id_col : str, optional
+            Column in index that indicate names of seismic
+            surveys from different seasons.
             Optional if `params` is a result of `SeismicDataset`'s
             method `find_equalization_params`.
 
@@ -1222,12 +1220,13 @@ class SeismicBatch(Batch):
         Raises
         ------
         ValueError : If index is not FieldIndex.
-        ValueError : If field with same id is contained in multiple records.
+        ValueError : If field with same id is contained in multiple
+                     surveys.
 
         Note
         ----
         Works properly only with FieldIndex.
-        If `params` dict is user-defined, `record_id_col` should be
+        If `params` dict is user-defined, `survey_id_col` should be
         provided excplicitly either as argument, or as `params` dict key-value
         pair.
         """
@@ -1237,16 +1236,16 @@ class SeismicBatch(Batch):
         pos = self.get_pos(None, src, index)
         field = getattr(self, src)[pos]
 
-        if record_id_col is None:
-            record_id_col = params['record_id_col']
+        if survey_id_col is None:
+            survey_id_col = params['survey_id_col']
 
-        record = np.unique(self.index.get_df(index=index)[record_id_col])    # pylint: disable=protected-access
-        if len(record) == 1:
-            record = record[0]
+        survey = np.unique(self.index.get_df(index=index)[survey_id_col])    # pylint: disable=protected-access
+        if len(survey) == 1:
+            survey = survey[0]
         else:
-            raise ValueError('Field {} contains more than one record!'.format(self.indices[0]))
+            raise ValueError('Field {} contains data from more than one survey!'.format(self.indices[0]))
 
-        p_95 = params[record]
+        p_95 = params[survey]
 
         # shifting and scaling data so that 5th and 95th percentiles are -1 and 1 respectively
         equalized_field = field / p_95

@@ -81,12 +81,10 @@ class SeismicDataset(Dataset):
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
 
-    def find_equalization_params(self, batch, component, record_id_col, sample_size=10000,
+    def find_equalization_params(self, batch, component, survey_id_col, sample_size=10000,
                                  container_name='equal_params', **kwargs):
-        """ Estimates 95th percentile of absolute values for each record in dataset for equalization.
-
-        In context of amplitude equalization we define "records" as seismic surveys taken in
-        different years and/or with different equipment.
+        """ Estimates 95th percentile of absolute values for each seismic survey
+        in dataset for equalization.
 
         This method utilizes t-digest structure for batch-wise estimation of rank-based statistics,
         namely 95th percentile.
@@ -97,15 +95,16 @@ class SeismicDataset(Dataset):
             Current batch from pipeline.
         component : str
             Component with fields.
-        record_id_col : str
-            Column in index that indicate different records.
+        survey_id_col : str
+            Column in index that indicate names of seismic
+            surveys from different seasons.
         sample_size: int, optional
             Number of elements to draw from each field to update
             estimates if TDigest. Time for each update grows linearly
             with `sample_size`. Default is 10000.
         container_name: str, optional
             Name of the `SeismicDataset` attribute to store a dict
-            with estimated percentile. Also contains `record_id_col`
+            with estimated percentile. Also contains `survey_id_col`
             key and corresponding value.
         kwargs: misc
             Parameters for TDigest objects.
@@ -113,7 +112,7 @@ class SeismicDataset(Dataset):
         Raises
         ------
         ValueError : If index is not FieldIndex.
-        ValueError : If field with same id is contained in multiple records.
+        ValueError : If field with same id is contained in multiple survey.
 
         Note
         ----
@@ -125,24 +124,24 @@ class SeismicDataset(Dataset):
         private_name = '_' + container_name
         params = getattr(self, private_name, None)
         if params is None:
-            records = np.unique(self.index.get_df()[record_id_col])    # pylint: disable=protected-access
+            surveys = np.unique(self.index.get_df()[survey_id_col])    # pylint: disable=protected-access
             delta, k = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
-            params = dict(zip(records, [TDigest(delta, k) for _ in records]))
+            params = dict(zip(surveys, [TDigest(delta, k) for _ in surveys]))
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            record = np.unique(batch.index.get_df(index=idx)[record_id_col])    # pylint: disable=protected-access
-            if len(record) == 1:
-                record = record[0]
+            survey = np.unique(batch.index.get_df(index=idx)[survey_id_col])    # pylint: disable=protected-access
+            if len(survey) == 1:
+                survey = survey[0]
             else:
-                raise ValueError('Field {} contains more than one record!'.format(batch.indices[0]))
+                raise ValueError('Field {} contains data from more than one survey!'.format(self.indices[0]))
 
             pos = batch.get_pos(idx)
             sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
 
-            params[record].batch_update(np.absolute(sample))
+            params[survey].batch_update(np.absolute(sample))
 
-        statistics = dict([record, digest.percentile(95)]
-                          for record, digest in params.items() if digest.n > 0)
-        statistics['record_id_col'] = record_id_col
+        statistics = dict([survey, digest.percentile(95)]
+                          for survey, digest in params.items() if digest.n > 0)
+        statistics['survey_id_col'] = survey_id_col
         setattr(self, container_name, statistics)
