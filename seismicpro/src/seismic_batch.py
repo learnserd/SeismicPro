@@ -704,7 +704,7 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init='_init_component')
-    def field_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4, sample_time=None):
+    def hodograph_straightening(self, index, speed, src=None, dst=None, num_mean_tr=4, sample_time=None):
         r""" Straightening up the travel time curve with normal grading. Shift for each
         time value calculated by following way:
 
@@ -807,7 +807,7 @@ class SeismicBatch(Batch):
         Returns
         -------
             : SeismicBatch
-            Batch of fields with corrected spherical divergence.
+            Batch of shot gathers with corrected spherical divergence.
 
         Note
         ----
@@ -1215,13 +1215,13 @@ class SeismicBatch(Batch):
         Returns
         -------
             : SeismicBatch
-            Batch of fields with equalized data.
+            Batch of shot gathers with equalized data.
 
         Raises
         ------
         ValueError : If index is not FieldIndex.
-        ValueError : If field with same id is contained in multiple
-                     surveys.
+        ValueError : If shot gather with same id is contained in more
+                     than one survey.
 
         Note
         ----
@@ -1243,7 +1243,7 @@ class SeismicBatch(Batch):
         if len(survey) == 1:
             survey = survey[0]
         else:
-            raise ValueError('Field {} contains data from more than one survey!'.format(self.indices[0]))
+            raise ValueError('Field record {} contains data from more than one survey!'.format(self.indices[0]))
 
         p_95 = params[survey]
 

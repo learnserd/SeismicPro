@@ -21,7 +21,7 @@ class SeismicDataset(Dataset):
         Parameters
         ----------
         component : str
-            Component with fields.
+            Component with shot gathers.
         speed : array
             Wave propagation speed depending on the depth.
             Speed is measured in milliseconds.
@@ -42,7 +42,7 @@ class SeismicDataset(Dataset):
             Sequence of (min, max) optimization bounds for each parameter.
             If `None` defaults to ((0, 5), (0, 5)).
         tslice : slice, optional
-            Lenght of loaded field.
+            Lenght of loaded traces.
 
         Returns
         -------
@@ -94,12 +94,12 @@ class SeismicDataset(Dataset):
         batch : SeismicBatch or B() named expression.
             Current batch from pipeline.
         component : str
-            Component with fields.
+            Component with shot gathers.
         survey_id_col : str
             Column in index that indicate names of seismic
             surveys from different seasons.
         sample_size: int, optional
-            Number of elements to draw from each field to update
+            Number of elements to draw from each shot gather to update
             estimates if TDigest. Time for each update grows linearly
             with `sample_size`. Default is 10000.
         container_name: str, optional
@@ -112,7 +112,8 @@ class SeismicDataset(Dataset):
         Raises
         ------
         ValueError : If index is not FieldIndex.
-        ValueError : If field with same id is contained in multiple survey.
+        ValueError : If shot gather with same id is contained in more
+                     than one survey.
 
         Note
         ----
