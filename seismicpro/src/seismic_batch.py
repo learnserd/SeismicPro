@@ -1239,7 +1239,7 @@ class SeismicBatch(Batch):
         if survey_id_col is None:
             survey_id_col = params['survey_id_col']
 
-        survey = np.unique(self.index.get_df(index=index)[survey_id_col])    # pylint: disable=protected-access
+        survey = np.unique(self.index.get_df(index=index)[survey_id_col])
         if len(survey) == 1:
             survey = survey[0]
         else:

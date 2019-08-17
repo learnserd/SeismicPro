@@ -125,13 +125,13 @@ class SeismicDataset(Dataset):
         private_name = '_' + container_name
         params = getattr(self, private_name, None)
         if params is None:
-            surveys = np.unique(self.index.get_df()[survey_id_col])    # pylint: disable=protected-access
+            surveys = np.unique(self.index.get_df()[survey_id_col])
             delta, k = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
             params = dict(zip(surveys, [TDigest(delta, k) for _ in surveys]))
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            survey = np.unique(batch.index.get_df(index=idx)[survey_id_col])    # pylint: disable=protected-access
+            survey = np.unique(batch.index.get_df(index=idx)[survey_id_col])
             if len(survey) == 1:
                 survey = survey[0]
             else:
