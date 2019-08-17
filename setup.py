@@ -11,7 +11,7 @@ setup(
     packages=find_packages(exclude=['tutorials', 'docker_containers', 'datasets', 'models']),
     version=version,
     url='https://github.com/analysiscenter/SeismicPro',
-    license='Apache License 2.0',
+    license='CC BY-NC-SA 4.0',
     author='Gazprom Neft DS team',
     author_email='rhudor@gmail.com',
     description='A framework for seismic data processing',
