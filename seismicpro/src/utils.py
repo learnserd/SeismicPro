@@ -788,3 +788,17 @@ def massive_block(data):
     ind.append(plus_one[:, 1][sort[-1]])
     ind.extend([0] * (arr.shape[0] - mask[-1] - 1))
     return ind
+
+def check_unique_fieldrecord_across_surveys(surveys_by_fieldrecord, index):
+    """
+    Check that FieldRecord with identifier `index` is present only in one survey.
+
+    Parameters
+    ----------
+    surveys_by_fieldrecord : array-like
+        Unique survey identifiers for given FieldRecord.
+    index : str, numeric
+        FieldRecord identifier.
+    """
+    if len(surveys_by_fieldrecord) != 1:
+        raise ValueError('Field {} represents data from more than one survey!'.format(index))

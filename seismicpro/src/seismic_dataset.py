@@ -4,8 +4,9 @@ from scipy.optimize import minimize
 from tdigest import TDigest
 
 from ..batchflow import Dataset
-from ..src.seismic_index import FieldIndex
-from ..src.seismic_batch import SeismicBatch
+from .seismic_index import FieldIndex
+from .seismic_batch import SeismicBatch
+from .utils import check_unique_fieldrecord_across_surveys
 
 
 class SeismicDataset(Dataset):
@@ -131,11 +132,9 @@ class SeismicDataset(Dataset):
             setattr(self, private_name, params)
 
         for idx in batch.indices:
-            survey = np.unique(batch.index.get_df(index=idx)[survey_id_col])
-            if len(survey) == 1:
-                survey = survey[0]
-            else:
-                raise ValueError('Field {} contains data from more than one survey!'.format(self.indices[0]))
+            surveys_by_fieldrecord = np.unique(batch.index.get_df(index=idx)[survey_id_col])
+            check_unique_fieldrecord_across_surveys(surveys_by_fieldrecord, idx)
+            survey = surveys_by_fieldrecord[0]
 
             pos = batch.get_pos(idx)
             sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)

@@ -11,7 +11,8 @@ from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
 from .seismic_index import SegyFilesIndex, FieldIndex
 
-from .utils import FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block
+from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block,
+                    check_unique_fieldrecord_across_surveys)
 from .file_utils import write_segy_file
 from .plot_utils import IndexTracker, spectrum_plot, seismic_plot, statistics_plot, gain_plot
 
@@ -1239,11 +1240,9 @@ class SeismicBatch(Batch):
         if survey_id_col is None:
             survey_id_col = params['survey_id_col']
 
-        survey = np.unique(self.index.get_df(index=index)[survey_id_col])
-        if len(survey) == 1:
-            survey = survey[0]
-        else:
-            raise ValueError('Field record {} contains data from more than one survey!'.format(self.indices[0]))
+        surveys_by_fieldrecord = np.unique(self.index.get_df(index=index)[survey_id_col])
+        check_unique_fieldrecord_across_surveys(surveys_by_fieldrecord, index)
+        survey = surveys_by_fieldrecord[0]
 
         p_95 = params[survey]
 
