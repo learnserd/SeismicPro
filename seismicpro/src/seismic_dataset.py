@@ -136,7 +136,7 @@ class SeismicDataset(Dataset):
             check_unique_fieldrecord_across_surveys(surveys_by_fieldrecord, idx)
             survey = surveys_by_fieldrecord[0]
 
-            pos = batch.get_pos(idx)
+            pos = batch.get_pos(None, component, idx)
             sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
 
             params[survey].batch_update(np.absolute(sample))
