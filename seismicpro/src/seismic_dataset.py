@@ -1,10 +1,12 @@
 """File contains seismic dataset."""
 import numpy as np
 from scipy.optimize import minimize
+from tdigest import TDigest
 
 from ..batchflow import Dataset
-from ..src.seismic_index import FieldIndex
-from ..src.seismic_batch import SeismicBatch
+from .seismic_index import FieldIndex
+from .seismic_batch import SeismicBatch
+from .utils import check_unique_fieldrecord_across_surveys
 
 
 class SeismicDataset(Dataset):
@@ -20,7 +22,7 @@ class SeismicDataset(Dataset):
         Parameters
         ----------
         component : str
-            Component with fields.
+            Component with shot gathers.
         speed : array
             Wave propagation speed depending on the depth.
             Speed is measured in milliseconds.
@@ -41,12 +43,16 @@ class SeismicDataset(Dataset):
             Sequence of (min, max) optimization bounds for each parameter.
             If `None` defaults to ((0, 5), (0, 5)).
         tslice : slice, optional
-            Lenght of loaded field.
+            Lenght of loaded traces.
 
         Returns
         -------
             : array
             Coefficients for speed and time.
+
+        Raises
+        ------
+        ValueError : If Index is not FieldIndex.
 
         Note
         ----
@@ -75,3 +81,67 @@ class SeismicDataset(Dataset):
 
         func = minimize(loss, initial_point, args=args, method=method, bounds=bounds, **kwargs)
         return func.x
+
+    def find_equalization_params(self, batch, component, survey_id_col, sample_size=10000,
+                                 container_name='equal_params', **kwargs):
+        """ Estimates 95th percentile of absolute values for each seismic survey
+        in dataset for equalization.
+
+        This method utilizes t-digest structure for batch-wise estimation of rank-based statistics,
+        namely 95th percentile.
+
+        Parameters
+        ----------
+        batch : SeismicBatch or B() named expression.
+            Current batch from pipeline.
+        component : str
+            Component with shot gathers.
+        survey_id_col : str
+            Column in index that indicate names of seismic
+            surveys from different seasons.
+        sample_size: int, optional
+            Number of elements to draw from each shot gather to update
+            estimates if TDigest. Time for each update grows linearly
+            with `sample_size`. Default is 10000.
+        container_name: str, optional
+            Name of the `SeismicDataset` attribute to store a dict
+            with estimated percentile. Also contains `survey_id_col`
+            key and corresponding value.
+        kwargs: misc
+            Parameters for TDigest objects.
+
+        Raises
+        ------
+        ValueError : If index is not FieldIndex.
+        ValueError : If shot gather with same id is contained in more
+                     than one survey.
+
+        Note
+        ----
+        Dictoinary with estimated percentile can be obtained from pipeline using `D(container_name)`.
+        """
+        if not isinstance(self.index, FieldIndex):
+            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        private_name = '_' + container_name
+        params = getattr(self, private_name, None)
+        if params is None:
+            surveys = np.unique(self.index.get_df()[survey_id_col])
+            delta, k = kwargs.pop('delta', 0.01), kwargs.pop('K', 25)
+            params = dict(zip(surveys, [TDigest(delta, k) for _ in surveys]))
+            setattr(self, private_name, params)
+
+        for idx in batch.indices:
+            surveys_by_fieldrecord = np.unique(batch.index.get_df(index=idx)[survey_id_col])
+            check_unique_fieldrecord_across_surveys(surveys_by_fieldrecord, idx)
+            survey = surveys_by_fieldrecord[0]
+
+            pos = batch.get_pos(None, component, idx)
+            sample = np.random.choice(getattr(batch, component)[pos].reshape(-1), size=sample_size)
+
+            params[survey].batch_update(np.absolute(sample))
+
+        statistics = dict([survey, digest.percentile(95)]
+                          for survey, digest in params.items() if digest.n > 0)
+        statistics['survey_id_col'] = survey_id_col
+        setattr(self, container_name, statistics)
