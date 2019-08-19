@@ -85,3 +85,17 @@ Some articles related to seismic data processing:
 * [Seismic images construction](http://lserv.deg.gubkin.ru/file.php?file=../../1/dfwikidata/Voskresenskij.JU.N.Postroenie.sejsmicheskih.izobrazhenij.%28M,.RGUNG%29%282006%29%28T%29_GsPs_.pdf)
 * [Difraction](https://mospolytech.ru/storage/43ec517d68b6edd3015b3edc9a11367b/files/LRNo93.pdf)
 * [Automatic first-breaks picking: New strategies and algorithms](https://www.researchgate.net/publication/249866374_Automatic_first-breaks_picking_New_strategies_and_algorithms)
+
+## Citing SeismicPro
+
+Please cite SeismicPro in your publications if it helps your research.
+
+    Khudorozhkov R., Illarionov E., Broilovskiy A., Kalashnikov N., Podvyaznikov D. SeismicPro library for seismic data processing and ML models training and inference. 2019.
+
+```
+@misc{seismicpro_2019,
+  author       = {R. Khudorozhkov and E. Illarionov and A. Broilovskiy and N. Kalashnikov and D. Podvyaznikov},
+  title        = {SeismicPro library for seismic data processing and ML models training and inference},
+  year         = 2019
+}
+```
