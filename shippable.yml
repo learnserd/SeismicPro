@@ -12,6 +12,7 @@ build:
     image_tag: $TAG
   ci:
     - pip3 install pandas==0.22.0
+    - pip3 install tdigest==0.5.2.2
     - find ./seismicpro -not -path "./seismicpro/batchflow/*" -iname "*.py" | xargs -r pylint -rn --rcfile pylintrc
 
 integrations:
