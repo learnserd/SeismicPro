@@ -17,7 +17,7 @@ build:
 
 integrations:
   hub:
-    - integrationName: DockerHub analysiscenter.ru
+    - integrationName: DockerHub analysiscenter
       type: docker
 
   notifications:
