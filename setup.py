@@ -10,7 +10,7 @@ setup(
     name='SeismicPro',
     packages=find_packages(exclude=['tutorials', 'docker_containers', 'datasets', 'models']),
     version=version,
-    url='https://github.com/analysiscenter/SeismicPro',
+    url='https://github.com/gazprom-neft/SeismicPro',
     license='CC BY-NC-SA 4.0',
     author='Gazprom Neft DS team',
     author_email='rhudor@gmail.com',

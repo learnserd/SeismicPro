@@ -1,6 +1,6 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python](https://img.shields.io/badge/python-3.5-blue.svg)](https://python.org)
-[![Run Status](https://api.shippable.com/projects/58c6ada92e042a0600297f61/badge?branch=master)](https://app.shippable.com/github/analysiscenter/batchflow)
+[![Run Status](https://api.shippable.com/projects/5d5e601aed1bf40007051a93/badge?branch=master)](https://app.shippable.com/github/gazprom-neft/SeismicPro)
 
 # SeismicPro
 
@@ -29,7 +29,7 @@ SeismicPro provides a framework for machine learning on field seismic data.
 ## Installation
 
 ```
-git clone --recursive https://github.com/analysiscenter/SeismicPro.git
+git clone --recursive https://github.com/gazprom-neft/SeismicPro.git
 ```
 ## Tutorials
 
@@ -86,11 +86,11 @@ File with first-break picking data is expected to be in csv (comma-separated-val
 
 With [pipenv](https://docs.pipenv.org/):
 
-    pipenv install git+https://github.com/analysiscenter/SeismicPro.git#egg=SeismicPro
+    pipenv install git+https://github.com/gazprom-neft/SeismicPro.git#egg=SeismicPro
 
 With [pip](https://pip.pypa.io/en/stable/):
 
-    pip3 install git+https://github.com/analysiscenter/SeismicPro.git
+    pip3 install git+https://github.com/gazprom-neft/SeismicPro.git
 
 After that just import `seismicpro`:
 ```python
@@ -101,7 +101,7 @@ import seismicpro
 
 When cloning repo from GitHub use flag ``--recursive`` to make sure that ``batchflow`` submodule is also cloned.
 
-    git clone --recursive https://github.com/analysiscenter/SeismicPro.git
+    git clone --recursive https://github.com/gazprom-neft/SeismicPro.git
 
 ## Literature
 
