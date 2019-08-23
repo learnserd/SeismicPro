@@ -17,11 +17,11 @@ build:
 
 integrations:
   hub:
-    - integrationName: DockerHub analysiscenter
+    - integrationName: Containers
       type: docker
 
   notifications:
-    - integrationName: Slack analysiscenter.ru
+    - integrationName: Notifier
       type: slack
       recipients:
         - "#commits"
