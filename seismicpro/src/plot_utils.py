@@ -155,7 +155,8 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
     if title is not None:
         fig.suptitle(title)
     if save_to is not None:
-        plt.savefig(save_to, dpi=dpi)
+        plt.savefig(save_to, dpi=dpi, transparent=True)
+
     plt.show()
 
 def spectrum_plot(arrs, frame, rate, max_freq=None, names=None,

@@ -56,7 +56,8 @@ def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
 def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',  # pylint: disable=too-many-arguments
                             vmin=None, vmax=None, figsize=(15, 15),
                             time_frame_width=100, noverlap=None, window=('tukey', 0.25),
-                            n_cols=None, fontsize=20, aspect=None):
+                            n_cols=None, fontsize=20, aspect=None,
+                            save_to=None):
     """
     Draws seismograms with distances computed relative to 1-st given seismogram
 
@@ -124,6 +125,10 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
         if aspect:
             axs[i].set_aspect(aspect)
 
+    if save_to:
+        plt.savefig(save_to, transparent=True)
+
+    plt.show()
 
 def get_cv(arrs, q=0.95):
     """
