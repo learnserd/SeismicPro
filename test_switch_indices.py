@@ -52,11 +52,15 @@ class CheckSeismicIndicesMixin(CheckIndicesMixin):
         return self._assert_item_shape(index, lambda x: x > 1, lambda x: x > 1)
 
 
-class ReindexerMixin:
+class ReindexerBatchMixin:
     """ Reindexer """
+
+    @property
+    def reindex_stats(self):
+        return self.dataset.reindex_stats
+
     @action
-    def trace2field_index(self):
-        """ aggregates processed traces and passes entire field when it is assembled"""
+    def reindex(self, self_no):
         for i in self.indices:
 
             data = []
@@ -64,78 +68,112 @@ class ReindexerMixin:
                 pos = self.get_pos(None, src, i)
                 data.append(getattr(self, src)[pos])
 
-            self.dataset.add_trace(i, self.components, data)
+            self.reindex_stats.add_item(i, self.components, data, self_no)
 
-        new_fields, new_data = self.dataset.get_ready_idx(self.components)
+        new_fields, new_data = self.reindex_stats.get_ready_idx(self.components, self_no)
 
-        new_batch = type(self)(FieldIndex(self.index).create_subset(new_fields))
+        new_index_type = self.reindex_stats.new_index_type(self_no)
+        new_batch = type(self)(new_index_type(self.index).create_subset(new_fields))
         new_batch.add_components(self.components, init=new_data)
 
         return new_batch
 
 
-class CheckIndicesBatch(SeismicBatch, CheckSeismicIndicesMixin, ReindexerMixin):
+class CheckIndicesBatch(SeismicBatch, CheckSeismicIndicesMixin, ReindexerBatchMixin):
     pass
 
 
 class ChangeIndicesDataSet(Dataset):
     """ Can store items processing status """
+
+    class ReindexStatsEntry:
+
+        df_columns = {
+            TraceIndex: 'TRACE_SEQUENCE_FILE',
+            FieldIndex: 'FieldRecord'
+        }
+
+        def __init__(self, index, old_index_type, new_index_type):
+            old_col = self.df_columns[old_index_type]
+            self.new_col = new_col = self.df_columns[new_index_type]
+
+            self.imap = index.get_df()[[old_col, new_col]].droplevel(1, axis=1).set_index(old_col)
+            self.new_fields = {}
+            self.processed_fields = set()
+            self.new_index_type = new_index_type
+            self.old_index_type = old_index_type
+
+        def add_item(self, old_idx, components, data):
+
+            deb = self.imap.loc[old_idx + 1]
+            new_item = deb[self.new_col]
+            self.imap.drop(old_idx + 1, inplace=True)
+
+            self.new_fields.setdefault(new_item, dict.fromkeys(components, []))
+            for c, d in zip(components, data):
+                self.new_fields[new_item][c].append(d)
+
+            self.processed_fields.add(new_item)
+
+        def get_ready_idx(self, components):
+            """ get fields whose traces are all processed """
+            ready_items = set()
+            res = dict.fromkeys(components, [])
+            for i in self.processed_fields:
+                if i not in self.imap[self.new_col].values:
+                    ready_items.add(i)
+                    new_data = self.new_fields.pop(i)
+                    for comp in new_data:
+                        res[comp].append(np.concatenate(new_data[comp]))
+
+            self.processed_fields -= ready_items
+
+            return ready_items, tuple(res.values())
+
+    class ReindexStats:
+        def __init__(self):
+            self.stats = []
+
+        def init_item(self, index, old_index_type, new_index_type):
+            self.stats.append(ChangeIndicesDataSet.ReindexStatsEntry(index, old_index_type, new_index_type))
+
+        def new_index_type(self, num):
+            return self.stats[num].new_index_type
+
+        def add_item(self, old_idx, components, data, num):
+            self.stats[num].add_item(old_idx, components, data)
+
+        def get_ready_idx(self, components, num):
+            return self.stats[num].get_ready_idx(components)
+
     def __init__(self, index, batch_class=CheckIndicesBatch, preloaded=None, *args, **kwargs):
         super().__init__(index, batch_class=batch_class, preloaded=preloaded, *args, **kwargs)
+        self.reindex_stats = None
 
-        self.__fields_map = index.trace2field_df()
-        self.__new_fields = {}
-        self.__processed_fields = set()
+    def initialize_reindex_stats(self, index_pairs):
+        self.reindex_stats = self.ReindexStats()
 
-    def add_trace(self, trace_idx, components, data):
-        """ store info about processed traces """
-        field = self.__fields_map.loc[trace_idx + 1].FieldRecord
-        self.__new_fields.setdefault(field, dict.fromkeys(components, []))
-        for c, d in zip(components, data):
-            self.__new_fields[field][c].append(d)
-
-        self.__processed_fields.add(field)
-        self.__fields_map.drop(trace_idx + 1, inplace=True)
-
-    def get_ready_idx(self, components):
-        """ get fields whose traces are all processed """
-        new_fields = []
-        new_data = dict.fromkeys(components, [])
-        for f in self.__processed_fields:
-            if f not in self.__fields_map.FieldRecord.values:
-                new_fields.append(f)
-                field_data = self.__new_fields.pop(f)
-                for comp in field_data:
-                    new_data[comp].append(np.concatenate(field_data[comp]))
-
-        self.__processed_fields -= set(new_fields)
-
-        return new_fields, tuple(new_data.values())
-
-
-class TraceIndexSwitchable(TraceIndex):
-    """ Tells trace-field correspondence """
-    def trace2field_df(self):
-        """ Tells trace-field correspondence """
-        return self._idf[['FieldRecord', 'TRACE_SEQUENCE_FILE']].droplevel(1, axis=1).set_index('TRACE_SEQUENCE_FILE')
+        for old_index_type, new_index_type in index_pairs:
+            self.reindex_stats.init_item(self.index, old_index_type, new_index_type)
 
 
 # pylint: disable=invalid-name
 if __name__ == "__main__":
     base_path = '/media/data/Data/datasets/Metrix_QC/2_QC_Metrix_1.sgy'
 
-    trace_index = TraceIndexSwitchable(name='raw', path=base_path, extra_headers=['ShotPoint', 'offset'])
+    trace_index = TraceIndex(name='raw', path=base_path, extra_headers=['ShotPoint', 'offset'])
 
     fi = FieldIndex(trace_index)
 
     ds = ChangeIndicesDataSet(trace_index, CheckIndicesBatch)
+    ds.initialize_reindex_stats([(TraceIndex, FieldIndex)])
 
     p1 = (Pipeline().load(components='raw', fmt='sgy'))
 
     p2 = (p1
           .assert_index_type(TraceIndex)
           .assert_traces_shape()
-          .trace2field_index()
+          .reindex(0)
           .assert_fields_shape()
           .assert_index_type(FieldIndex)
           )
