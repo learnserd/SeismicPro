@@ -1,48 +1,59 @@
 """ Draft for switching indices functionality """
-
+# pylint: disable=missing-docstring
 import numpy as np
 
 from seismicpro.batchflow import Dataset, Pipeline, action, inbatch_parallel
 from seismicpro.src import SeismicBatch, FieldIndex, TraceIndex
 
-class CheckIndicesBatch(SeismicBatch):
-    """ Indices assertions & switching"""
 
+class CheckIndicesMixin:
+    """ Indices assertions"""
+
+    @action
+    @inbatch_parallel(init='indices')
+    def assert_item_shape(self, index, *expected_shape):
+        """ check item shape conforms with expected shape"""
+        return self._assert_item_shape(index, *expected_shape)
+
+    def _assert_item_shape(self, index, *expected_shape):
+        for src in self.components:
+            pos = self.get_pos(None, src, index)
+            data = getattr(self, src)[pos]
+
+            assert len(data.shape) == len(expected_shape)
+            for dim, check in zip(data.shape, expected_shape):
+                if callable(check):
+                    assert check(dim)
+                else:
+                    assert dim == check
+
+        return self
+
+    @action
+    def assert_index_type(self, index_type):
+        """ insure index is of given type """
+        if not isinstance(self.index, index_type):
+            raise ValueError("Index must be {}, not {}".format(index_type, type(self.index)))
+        return self
+
+
+class CheckSeismicIndicesMixin(CheckIndicesMixin):
+    """ Seismic indices assertions"""
     @action
     @inbatch_parallel(init='indices')
     def assert_traces_shape(self, index):
         """ check item shape conforms with trace shape"""
-        for src in self.components:
-            pos = self.get_pos(None, src, index)
-            data = getattr(self, src)[pos]
-            assert data.shape[0] == 1
-        return self
-
-    @action
-    def assert_trace_index(self):
-        """ insure index is TraceIndex """
-        if not isinstance(self.index, TraceIndex):
-            raise ValueError("Index must be TraceIndex, not {}".format(type(self.index)))
-        return self
+        return self._assert_item_shape(index, 1, lambda x: x > 1)
 
     @action
     @inbatch_parallel(init='indices')
     def assert_fields_shape(self, index):
-        """ check item shape conforms with field shape"""
-        for src in self.components:
-            pos = self.get_pos(None, src, index)
-            data = getattr(self, src)[pos]
-            assert len(data.shape) == 2
-            assert data.shape[0] > 1 and data.shape[1] > 1
-        return self
+        """ check item shape conforms with fields shape"""
+        return self._assert_item_shape(index, lambda x: x > 1, lambda x: x > 1)
 
-    @action
-    def assert_field_index(self):
-        """ insure index is FieldIndex """
-        if not isinstance(self.index, FieldIndex):
-            raise ValueError("Index must be FieldIndex, not {}".format(type(self.index)))
-        return self
 
+class ReindexerMixin:
+    """ Reindexer """
     @action
     def trace2field_index(self):
         """ aggregates processed traces and passes entire field when it is assembled"""
@@ -61,6 +72,10 @@ class CheckIndicesBatch(SeismicBatch):
         new_batch.add_components(self.components, init=new_data)
 
         return new_batch
+
+
+class CheckIndicesBatch(SeismicBatch, CheckSeismicIndicesMixin, ReindexerMixin):
+    pass
 
 
 class ChangeIndicesDataSet(Dataset):
@@ -109,7 +124,7 @@ class TraceIndexSwitchable(TraceIndex):
 if __name__ == "__main__":
     base_path = '/media/data/Data/datasets/Metrix_QC/2_QC_Metrix_1.sgy'
 
-    trace_index = TraceIndexSwitchable(name='raw', path=base_path)
+    trace_index = TraceIndexSwitchable(name='raw', path=base_path, extra_headers=['ShotPoint', 'offset'])
 
     fi = FieldIndex(trace_index)
 
@@ -118,11 +133,11 @@ if __name__ == "__main__":
     p1 = (Pipeline().load(components='raw', fmt='sgy'))
 
     p2 = (p1
-          .assert_trace_index()
+          .assert_index_type(TraceIndex)
           .assert_traces_shape()
           .trace2field_index()
           .assert_fields_shape()
-          .assert_field_index()
+          .assert_index_type(FieldIndex)
           )
 
     p2 = p2 << ds
