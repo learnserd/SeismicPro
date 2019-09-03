@@ -2,6 +2,8 @@
 # pylint: disable=missing-docstring
 import numpy as np
 
+import segyio
+
 from seismicpro.batchflow import Dataset, Pipeline, action, inbatch_parallel
 from seismicpro.src import SeismicBatch, FieldIndex, TraceIndex
 
@@ -87,7 +89,43 @@ class ReindexerBatchMixin:
         return new_batch
 
 
-class CheckIndicesBatch(SeismicBatch, CheckSeismicIndicesMixin, ReindexerBatchMixin):
+class FakeBatch(SeismicBatch):
+
+    @inbatch_parallel(init="_init_component", target="threads")
+    def _load_from_segy_file(self, index, *args, src, dst, tslice=None):
+        """Load from a single segy file."""
+        _ = src, args
+        pos = self.get_pos(None, "indices", index)
+        path = index
+        trace_seq = self.index.get_df([index])[('TRACE_SEQUENCE_FILE', src)]
+        if tslice is None:
+            tslice = slice(None)
+
+        with segyio.open(path, strict=False) as segyfile:
+            traces = np.atleast_2d([np.ones(1000)[tslice] * i for i in
+                                    np.atleast_1d(trace_seq).astype(int)])
+            samples = segyfile.samples[tslice]
+            interval = segyfile.bin[segyio.BinField.Interval]
+
+        getattr(self, dst)[pos] = traces
+        if index == self.indices[0]:
+            self.meta[dst]['samples'] = samples
+            self.meta[dst]['interval'] = interval
+            self.meta[dst]['sorting'] = None
+
+        return self
+
+    @action
+    @inbatch_parallel(init='indices')
+    def assert_traces_indices(self, index):
+        for src in self.components:
+            pos = self.get_pos(None, src, index)
+            data = getattr(self, src)[pos]
+
+            assert int(data[0, 0]) == index + 1
+
+
+class CheckIndicesBatch(FakeBatch, CheckSeismicIndicesMixin, ReindexerBatchMixin):
     pass
 
 
@@ -106,7 +144,7 @@ class ChangeIndicesDataSet(Dataset):
             self.new_col = new_col = self.df_columns[new_index_type]
 
             df = index.get_df()
-            self.imap = df[[old_col, new_col]].droplevel(1, axis=1) #.set_index(old_col)
+            self.imap = df[[old_col, new_col]].droplevel(1, axis=1)
 
             # hack
             if TraceIndex in (old_index_type, new_index_type):
@@ -125,9 +163,11 @@ class ChangeIndicesDataSet(Dataset):
             need_split = len(new_items) > 1
 
             for i, new_item in enumerate(new_items):
-                self.new_fields.setdefault(new_item, dict.fromkeys(components, []))
+                self.new_fields.setdefault(new_item,
+                                           dict.fromkeys(components, {'data': [], 'order': []}))
                 for c, d in zip(components, data):
-                    self.new_fields[new_item][c].append(d[i].reshape(1, -1) if need_split else d)
+                    self.new_fields[new_item][c]['data'].append(d[i].reshape(1, -1) if need_split else d)
+                    self.new_fields[new_item][c]['order'].append(old_idx)
 
                 self.processed_fields.add(new_item)
 
@@ -140,7 +180,9 @@ class ChangeIndicesDataSet(Dataset):
                     ready_items.add(i)
                     new_data = self.new_fields.pop(i)
                     for comp in new_data:
-                        res[comp].append(np.concatenate(new_data[comp]))
+                        data = np.array(new_data[comp]['data'])
+                        order = np.argsort(new_data[comp]['order'])
+                        res[comp].append(np.concatenate(data[order]))
 
             self.processed_fields -= ready_items
 
@@ -174,14 +216,12 @@ class ChangeIndicesDataSet(Dataset):
 
 
 # pylint: disable=invalid-name
-if __name__ == "__main__":
+def test1():
     base_path = '/media/data/Data/datasets/Metrix_QC/2_QC_Metrix_1.sgy'
 
     trace_index = TraceIndex(name='raw', path=base_path, extra_headers=['ShotPoint', 'offset'])
 
     orig = set(trace_index.indices)
-
-    fi = FieldIndex(trace_index)
 
     ds = ChangeIndicesDataSet(trace_index, CheckIndicesBatch)
     ds.initialize_reindex_stats([(TraceIndex, FieldIndex), (FieldIndex, TraceIndex)])
@@ -195,19 +235,25 @@ if __name__ == "__main__":
     p2 = (p1
           .assert_index_type(TraceIndex, s1)
           .assert_traces_shape()
+          # .assert_traces_indices()
           .reindex(0)
           .assert_fields_shape()
           .assert_index_type(FieldIndex, s2)
           .reindex(1)
           .assert_index_type(TraceIndex, s3)
           .assert_traces_shape()
+          .assert_traces_indices()
           )
 
     p2 = p2 << ds
 
-    p2.run(batch_size=800, n_epochs=1, bar=True)
+    p2.run(batch_size=800, n_epochs=1, bar=True, shuffle=True)
 
     print(len(s1), len(s2), len(s3))
     print(s2)
     print(orig - set(s1))
     print(orig - set(s3))
+
+
+if __name__ == "__main__":
+    test1()
