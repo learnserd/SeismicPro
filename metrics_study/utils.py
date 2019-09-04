@@ -100,6 +100,10 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
         x, y = int(np.ceil(y / n_cols)), n_cols
 
     _, axs = plt.subplots(x, y, figsize=figsize)
+
+    if not isinstance(axs, np.ndarray):
+        axs = np.array([axs])
+
     axs = axs.flatten()
 
     origin, _ = modifications[0]
@@ -115,7 +119,8 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
             dist_m = get_windowed_spectrogram_dists(mod[0:n_use_traces], origin[0:n_use_traces], dist_fn=dist_fn,
                                                     time_frame_width=time_frame_width, noverlap=noverlap, window=window)
             dist = np.mean(dist_m)
-            distances_strings.append("{}: {:.4}".format(dist_fn, dist))
+            name = dist_fn.__name__ if callable(dist_fn) else dist_fn
+            distances_strings.append("{}: {:.4}".format(name, dist))
 
         axs[i].imshow(mod.T, vmin=vmin, vmax=vmax, cmap='gray')
         rect = patches.Rectangle((0, 0), n_use_traces, n_ts, edgecolor='r', facecolor='none', lw=1)
