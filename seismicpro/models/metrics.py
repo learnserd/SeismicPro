@@ -1,8 +1,55 @@
 """Metrics for Seismic procesing tasks."""
 import numpy as np
+from scipy import signal
 
 from ..batchflow.batchflow.models.metrics import Metrics
 from ..src import measure_gain_amplitude
+
+def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
+                                   time_frame_width=100, noverlap=None, window=('tukey', 0.25)):
+    """
+    Calculates distances between traces' spectrograms in sliding windows
+    Parameters
+    ----------
+    smgr : np.array of shape (traces count, timestamps)
+    smgl : np.array of shape (traces count, timestamps)
+        traces to compute spectrograms on
+
+    dist_fn : 'max_abs', 'sum_abs', 'sum_sq' or callable, optional
+        function to calculate distance between 2 specrograms for single trace and single time window
+        if callable, should accept 2 arrays of shape (traces count, frequencies, segment times)
+        and operate on 2-d axis
+        Default is 'sum_abs'
+
+    time_frame_width : int, optional
+        nperseg for signal.spectrogram
+        see ::meth:: scipy.signal.spectrogram
+
+    noverlap : int, optional
+    window : str or tuple or array_like, optional
+        see ::meth:: scipy.signal.spectrogram
+
+    Returns
+    -------
+    np.array of shape (traces count, segment times) with distance heatmap
+
+    """
+    kwargs = dict(window=window, nperseg=time_frame_width, noverlap=noverlap)
+    *_, spgl = signal.spectrogram(smgl, **kwargs)
+    *_, spgr = signal.spectrogram(smgr, **kwargs)
+
+    if callable(dist_fn):  # res(sl, sr)
+        res = dist_fn(spgl, spgr)
+    elif dist_fn == 'max_abs':
+        res = np.abs(spgl - spgr).max(axis=1)
+    elif dist_fn == 'sum_abs':
+        res = np.sum(np.abs(spgl - spgr), axis=1)
+    elif dist_fn == 'sum_sq':
+        res = np.sum(np.abs(spgl - spgr) ** 2, axis=1)
+    else:
+        raise NotImplementedError('modes other than max_abs, sum_abs, sum_sq not implemented yet')
+
+    return res
 
 class FieldMetrics(Metrics):
     """Class for seismic field record metrics.
@@ -43,6 +90,10 @@ class FieldMetrics(Metrics):
             return getattr(np, reduce)(corr, **kwargs)
 
         return reduce(corr, **kwargs)
+
+    def wspec(self, **kwargs):
+        """Windowed spectrogram metric."""
+        return np.mean(get_windowed_spectrogram_dists(self.targets, self.predictions, **kwargs))
 
 class PickingMetrics(Metrics):
     """Class for First Break picking task metrics.
