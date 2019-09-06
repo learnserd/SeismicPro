@@ -140,3 +140,8 @@ def get_cv(arrs, q=0.95):
     Calculates upper border for data range covered by a colormap in pyplot.imshow
     """
     return np.abs(np.quantile(np.stack(item for item in arrs), q))
+
+
+def get_modifications_list(batch, i):
+    """ get seismic batch components with short names """
+    return [(batch.__getattr__(c)[i], c.upper()) for c in batch.components]
