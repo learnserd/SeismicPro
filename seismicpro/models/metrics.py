@@ -51,13 +51,22 @@ def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
 
     return res
 
+def snr(signal, noise, tol=1e-6):
+    """Signal-to-noise ratio."""
+    nr = np.mean(noise ** 2)
+    if nr < tol:
+        return 0.
+    return np.mean(signal ** 2) / nr
+
 class FieldMetrics(Metrics):
     """Class for seismic field record metrics.
     """
-    def __init__(self, targets, predictions):
+    def __init__(self, targets=None, predictions=None, raw=None, mask=None):
         super().__init__()
         self.targets = targets
         self.predictions = predictions
+        self.raw = raw
+        self.mask = mask
 
     def iou(self):
         """Intersection-over-union metric."""
@@ -69,8 +78,12 @@ class FieldMetrics(Metrics):
         """Mean absolute error metric."""
         return np.mean(abs(self.targets - self.predictions))
 
+    def mse(self):
+        """Mean absolute error metric."""
+        return np.mean((self.targets - self.predictions) ** 2)
+
     def corr_coef(self, reduce='mean', **kwargs):
-        """Correlation coeffitients."""
+        """Correlation coefficients."""
         a = self.targets
         b = self.predictions
         a = (a - np.mean(a, axis=1, keepdims=True))
@@ -90,6 +103,27 @@ class FieldMetrics(Metrics):
             return getattr(np, reduce)(corr, **kwargs)
 
         return reduce(corr, **kwargs)
+
+    def signaltonoise(self, src, signal_frame, noise_frame):
+        """Signal-to-noise ratio estimation based on two frames in a seismogram."""
+        data = getattr(self, src)
+        return snr(data[signal_frame], data[noise_frame])
+
+    def signaltonoise2(self, src_clean, src_noised, frame=None, mask=False):
+        """Signal-to-noise ratio estimation by seismogram difference."""
+        clean = getattr(self, src_clean)
+        noised = getattr(self, src_noised)
+        if mask and (frame is not None):
+            raise ValueError("Mask or frame shoud be specified. Not both.")
+
+        if mask:
+            clean = clean[self.mask]
+            noised = noised[self.mask]
+        if frame:
+            clean = clean[frame]
+            noised = noised[frame]
+
+        return snr(clean, noised - clean)
 
     def wspec(self, **kwargs):
         """Windowed spectrogram metric."""
