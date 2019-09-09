@@ -51,22 +51,21 @@ def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
 
     return res
 
-def snr(signal, noise, tol=1e-6):
+def snr(sig, noise, tol=1e-6):
     """Signal-to-noise ratio."""
-    nr = np.mean(noise ** 2)
-    if nr < tol:
+    var = np.mean(noise ** 2)
+    if var < tol:
         return 0.
-    return np.mean(signal ** 2) / nr
+    return np.mean(sig ** 2) / var
 
 class FieldMetrics(Metrics):
     """Class for seismic field record metrics.
     """
-    def __init__(self, targets=None, predictions=None, raw=None, mask=None):
+    def __init__(self, targets=None, predictions=None, raw=None):
         super().__init__()
         self.targets = targets
         self.predictions = predictions
         self.raw = raw
-        self.mask = mask
 
     def iou(self):
         """Intersection-over-union metric."""
@@ -109,17 +108,11 @@ class FieldMetrics(Metrics):
         data = getattr(self, src)
         return snr(data[signal_frame], data[noise_frame])
 
-    def signaltonoise2(self, src_clean, src_noised, frame=None, mask=False):
+    def signaltonoise2(self, src_clean, src_noised, frame=None):
         """Signal-to-noise ratio estimation by seismogram difference."""
         clean = getattr(self, src_clean)
         noised = getattr(self, src_noised)
-        if mask and (frame is not None):
-            raise ValueError("Mask or frame shoud be specified. Not both.")
-
-        if mask:
-            clean = clean[self.mask]
-            noised = noised[self.mask]
-        if frame:
+        if frame is not None:
             clean = clean[frame]
             noised = noised[frame]
 
