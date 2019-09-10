@@ -12,15 +12,16 @@ build:
     image_tag: $TAG
   ci:
     - pip3 install pandas==0.22.0
-    - find ./seismicpro -not -path "./seismicpro/batchflow/*" -iname "*.py" | xargs -r pylint -rn --rcfile pylintrc
+    - pip3 install tdigest==0.5.2.2
+    - pylint -rn --rcfile pylintrc seismicpro
 
 integrations:
   hub:
-    - integrationName: DockerHub analysiscenter.ru
+    - integrationName: Containers
       type: docker
 
   notifications:
-    - integrationName: Slack analysiscenter.ru
+    - integrationName: Notifier
       type: slack
       recipients:
         - "#commits"

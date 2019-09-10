@@ -12,7 +12,7 @@ sys.path.append('../..')
 
 from seismicpro.batchflow import Dataset, B
 from seismicpro.batchflow.models.torch import UNet
-from seismicpro.src import FieldIndex, TraceIndex, SeismicBatch
+from seismicpro.src import FieldIndex, TraceIndex, SeismicDataset
 
 def make_prediction():
     """ Read the model and data paths and run inference pipeline.
@@ -29,9 +29,9 @@ def make_prediction():
     parser.add_argument('-bs', '--batch_size', type=int, help="The number of traces in \
                         the batch for inference stage.", default=1000)
     parser.add_argument('-ts', '--trace_len', type=int, help="The number of first samples \
-                        of the trace to load.", default=1000)
+                        of the trace to load.", default=751)
     parser.add_argument('-dvc', '--device', type=str or torch.device, help="The device for \
-                        inference. Can be 'cpu' or 'gpu'.", default='cpu')
+                        inference. Can be 'cpu' or 'gpu'.", default=torch.device('cpu'))
     args = parser.parse_args()
     path_raw = args.path_raw
     model = args.path_model
@@ -63,12 +63,11 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
         The device used for inference. Can be 'gpu' in case of avaliavle GPU.
 
     """
-    index = FieldIndex(name='raw', path=path_raw)
-    data = Dataset(TraceIndex(index), SeismicBatch)
+    data = SeismicDataset(TraceIndex(name='raw', path=path_raw))
 
     config_predict = {
         'build': False,
-        'load': {'path': path_model},
+        'load/path': path_model,
         'device': device
     }
 
@@ -81,7 +80,7 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
                      .init_model('dynamic', UNet, 'my_model', config=config_predict)
                      .load(components='raw', fmt='segy', tslice=np.arange(trace_len))
                      .drop_zero_traces(num_zero=num_zero, src='raw')
-                     .standartize(src='raw', dst='raw')
+                     .standardize(src='raw', dst='raw')
                      .add_components(components='predictions')
                      .apply_transform_all(src='raw', dst='raw', func=lambda x: np.stack(x))
                      .predict_model('my_model', B('raw'), fetches='predictions',

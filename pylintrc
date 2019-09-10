@@ -1,4 +1,5 @@
 [MASTER]
+ignore=batchflow
 extension-pkg-whitelist=numpy
 init-hook='import sys; sys.path.append(".")'
 
@@ -7,7 +8,7 @@ max-line-length=120
 max-attributes=8
 max-args=10
 max-locals=25
-good-names=B,C,D,F,L,P,R,V,W,_,a,ax,b,bar,c,d,df,e,ex,f,fn,fs,g,h,i,im,ix,j,k,l,lc,logger,lr,m,n,o,op,p,q,r,rc,s,t,v,w,x,xc,y,yc,z
+good-names=B,C,D,F,L,P,R,V,W,I,_,a,ax,b,bar,c,d,df,e,ex,f,fn,fs,g,h,i,im,ix,j,k,l,lc,logger,lr,m,n,o,op,p,q,r,rc,s,t,v,w,x,xc,y,yc,z
 
 [MESSAGE CONTROL]
 disable=no-member, no-value-for-parameter, no-self-use, too-many-locals, too-few-public-methods, too-many-public-methods, too-many-branches, unsubscriptable-object, redefined-variable-type, too-many-star-expressions, duplicate-code, not-context-manager, too-many-lines, global-statement, locally-disabled, wrong-import-position, invalid-sequence-index, redundant-keyword-arg, bad-super-call, no-self-argument, redefined-builtin, arguments-differ, len-as-condition, keyword-arg-before-vararg, assignment-from-none, useless-return, useless-import-alias, unnecessary-pass, cyclic-import, assignment-from-no-return, comparison-with-callable, unnecessary-lambda, no-method-argument, blacklisted-name
