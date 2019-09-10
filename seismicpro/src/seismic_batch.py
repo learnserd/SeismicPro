@@ -448,7 +448,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def _dump_picking(self, src, path, traces, to_samples, columns=None):
+    def _dump_picking(self, src, path, traces, to_samples, columns=None, max_len=[6, 4]):
         """Dump picking to file.
 
         Parameters
@@ -486,9 +486,11 @@ class SeismicBatch(Batch):
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
 
-        for i in [0, 2, 4]:
-            df.insert(i, str(i), "")
-        df.to_csv(path, index=False, sep='\t', header=False, encoding='ascii', mode='a')
+        with open(path, 'a') as f:
+            for row in df.iterrows():
+                for i, item in enumerate(row[1][:-1]):
+                    f.write(str(item).ljust(max_len[i] + 8))
+                f.write(str(row[1][i+1]) + '\n')
         return self
 
     @action
