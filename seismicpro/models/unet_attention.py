@@ -92,7 +92,7 @@ class UnetAtt(EncoderDecoder):
 
         #Shift sigmoid domain
         sigm_x = sigm_x + att_sum
-        
+
         #Apply sigmoid function to the above obtained domain
         attention_sigmoid = tf.sigmoid(sigm_x)
         self.store_to_attr("attention_sigmoid", attention_sigmoid)
