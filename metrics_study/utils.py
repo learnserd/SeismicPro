@@ -136,7 +136,7 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
     plt.show()
     
     
-def validate_all(batch, 
+def validate_all(batch, scale_lift=1, base='lift',
                             traces_frac=0.1, distance='sum_abs',  # pylint: disable=too-many-arguments
                             vmin=None, vmax=None, figsize=(15, 15),
                             time_frame_width=100, noverlap=None, window=('tukey', 0.25),
@@ -148,7 +148,7 @@ def validate_all(batch,
         
         res[i] = {}
     
-        modifications = get_modifications_list(batch, i)
+        modifications = get_modifications_list(batch, i, base=base, scale_lift=scale_lift)
 
         origin, _ = modifications[0]
         n_traces, n_ts = origin.shape
@@ -170,6 +170,8 @@ def get_cv(arrs, q=0.95):
     return np.abs(np.quantile(np.stack(item for item in arrs), q))
 
 
-def get_modifications_list(batch, i):
-    """ get seismic batch components with short names """
+def get_modifications_list(batch, i, base='lift', scale_lift=1):
+    """ get seismic batch components with short names """    
+    if base in batch.components:
+        return [(batch.__getattr__(base)[i] * scale_lift, base.upper())] + [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c != base]
     return [(batch.__getattr__(c)[i], c.upper()) for c in batch.components]
