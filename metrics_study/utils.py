@@ -134,6 +134,34 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
         plt.savefig(save_to, transparent=True)
 
     plt.show()
+    
+    
+def validate_all(batch, 
+                            traces_frac=0.1, distance='sum_abs',  # pylint: disable=too-many-arguments
+                            vmin=None, vmax=None, figsize=(15, 15),
+                            time_frame_width=100, noverlap=None, window=('tukey', 0.25),
+                            n_cols=None, fontsize=20, aspect=None,
+                            save_to=None):
+    res = {}
+    
+    for i in range(len(batch.index)):
+        
+        res[i] = {}
+    
+        modifications = get_modifications_list(batch, i)
+
+        origin, _ = modifications[0]
+        n_traces, n_ts = origin.shape
+        n_use_traces = int(n_traces*traces_frac)
+
+        for j, (mod, description) in enumerate(modifications):
+            dist_m = get_windowed_spectrogram_dists(mod[0:n_use_traces], origin[0:n_use_traces], dist_fn=distance,
+                                                    time_frame_width=time_frame_width, noverlap=noverlap, window=window)
+            dist = np.mean(dist_m)
+            res[i][description] = dist
+            
+    return res
+
 
 def get_cv(arrs, q=0.95):
     """
