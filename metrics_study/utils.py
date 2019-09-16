@@ -136,19 +136,32 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
     plt.show()
     
     
-def validate_all(batch, scale_lift=1, base='lift',
+def get_modifications_list(batch, i, scale_lift=1):
+    """ get seismic batch components with short names """   
+    res = []
+    if 'lift' in batch.components:
+        res.append((batch.__getattr__('lift')[i] * scale_lift, 'LIFT'))
+    if 'raw' in batch.components:
+        res.append((batch.__getattr__('raw')[i] * scale_lift, 'RAW'))
+    
+    res += [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c not in ('lift', 'raw')]
+    
+    return res
+
+
+def validate_all(batch, scale_lift=1,
                             traces_frac=0.1, distance='sum_abs',  # pylint: disable=too-many-arguments
                             vmin=None, vmax=None, figsize=(15, 15),
                             time_frame_width=100, noverlap=None, window=('tukey', 0.25),
                             n_cols=None, fontsize=20, aspect=None,
                             save_to=None):
-    res = {}
+    res = []
     
     for i in range(len(batch.index)):
         
-        res[i] = {}
+        res.append({})
     
-        modifications = get_modifications_list(batch, i, base=base, scale_lift=scale_lift)
+        modifications = get_modifications_list(batch, i, scale_lift=scale_lift)
 
         origin, _ = modifications[0]
         n_traces, n_ts = origin.shape
@@ -162,26 +175,8 @@ def validate_all(batch, scale_lift=1, base='lift',
             
     return res
 
-
 def get_cv(arrs, q=0.95):
     """
     Calculates upper border for data range covered by a colormap in pyplot.imshow
     """
     return np.abs(np.quantile(np.stack(item for item in arrs), q))
-
-
-def get_modifications_list(batch, i, base='lift', scale_lift=1):
-    """ get seismic batch components with short names """   
-    res = []
-    if base in batch.components:
-        res.append(batch.__getattr__(base)[i] * scale_lift, base.upper())
-    if 'raw' in batch.components:
-        res.append(batch.__getattr__('raw')[i] * scale_lift, 'RAW')
-    
-    res += [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c not in (base, 'raw')]
-    
-    return res
-    
-#     if base in batch.components:
-#         return [(batch.__getattr__(base)[i] * scale_lift, base.upper())] + [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c != base]
-#     return [(batch.__getattr__(c)[i], c.upper()) for c in batch.components]
