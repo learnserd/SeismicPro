@@ -171,7 +171,17 @@ def get_cv(arrs, q=0.95):
 
 
 def get_modifications_list(batch, i, base='lift', scale_lift=1):
-    """ get seismic batch components with short names """    
+    """ get seismic batch components with short names """   
+    res = []
     if base in batch.components:
-        return [(batch.__getattr__(base)[i] * scale_lift, base.upper())] + [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c != base]
-    return [(batch.__getattr__(c)[i], c.upper()) for c in batch.components]
+        res.append(batch.__getattr__(base)[i] * scale_lift, base.upper())
+    if 'raw' in batch.components:
+        res.append(batch.__getattr__('raw')[i] * scale_lift, 'RAW')
+    
+    res += [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c not in (base, 'raw')]
+    
+    return res
+    
+#     if base in batch.components:
+#         return [(batch.__getattr__(base)[i] * scale_lift, base.upper())] + [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c != base]
+#     return [(batch.__getattr__(c)[i], c.upper()) for c in batch.components]
