@@ -5,7 +5,6 @@ import os
 import sys
 import argparse
 
-import torch
 import numpy as np
 
 sys.path.append('../..')
@@ -31,7 +30,7 @@ def make_prediction():
     parser.add_argument('-ts', '--trace_len', type=int, help="The number of first samples \
                         of the trace to load.", default=751)
     parser.add_argument('-dvc', '--device', type=str or torch.device, help="The device for \
-                        inference. Can be 'cpu' or 'gpu'.", default=torch.device('cpu'))
+                        inference. Can be 'cpu' or 'gpu'.", default='cpu')
     args = parser.parse_args()
     path_raw = args.path_raw
     model = args.path_model
