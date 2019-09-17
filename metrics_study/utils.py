@@ -7,7 +7,7 @@ from matplotlib import patches
 
 
 def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
-                                   time_frame_width=100, noverlap=None, window=('tukey', 0.25)):
+                                   time_frame_width=100, noverlap=None, window='boxcar'):
     """
     Calculates distances between traces' spectrograms in sliding windows
     Parameters
@@ -55,7 +55,7 @@ def get_windowed_spectrogram_dists(smgr, smgl, dist_fn='sum_abs',
 
 def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',  # pylint: disable=too-many-arguments
                             vmin=None, vmax=None, figsize=(15, 15),
-                            time_frame_width=100, noverlap=None, window=('tukey', 0.25),
+                            time_frame_width=100, noverlap=None, window='boxcar',
                             n_cols=None, fontsize=20, aspect=None,
                             save_to=None):
     """
@@ -116,8 +116,9 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
     for i, (mod, description) in enumerate(modifications):
         distances_strings = []
         for dist_fn in distances:
-            dist_m = get_windowed_spectrogram_dists(mod[0:n_use_traces], origin[0:n_use_traces], dist_fn=dist_fn,
-                                                    time_frame_width=time_frame_width, noverlap=noverlap, window=window)
+            dist_m = get_windowed_spectrogram_dists(mod[0:n_use_traces], origin[0:n_use_traces],
+                                                    dist_fn=dist_fn, time_frame_width=time_frame_width,
+                                                    noverlap=noverlap, window=window)
             dist = np.mean(dist_m)
             name = dist_fn.__name__ if callable(dist_fn) else dist_fn
             distances_strings.append("{}: {:.4}".format(name, dist))
@@ -134,46 +135,43 @@ def draw_modifications_dist(modifications, traces_frac=0.1, distances='sum_abs',
         plt.savefig(save_to, transparent=True)
 
     plt.show()
-    
-    
+
+
 def get_modifications_list(batch, i, scale_lift=1):
-    """ get seismic batch components with short names """   
+    """ get seismic batch components with short names """
     res = []
     if 'lift' in batch.components:
         res.append((batch.__getattr__('lift')[i] * scale_lift, 'LIFT'))
     if 'raw' in batch.components:
         res.append((batch.__getattr__('raw')[i] * scale_lift, 'RAW'))
-    
+
     res += [(batch.__getattr__(c)[i], c.upper()) for c in batch.components if c not in ('lift', 'raw')]
-    
+
     return res
 
 
-def validate_all(batch, scale_lift=1,
-                            traces_frac=0.1, distance='sum_abs',  # pylint: disable=too-many-arguments
-                            vmin=None, vmax=None, figsize=(15, 15),
-                            time_frame_width=100, noverlap=None, window=('tukey', 0.25),
-                            n_cols=None, fontsize=20, aspect=None,
-                            save_to=None):
+def validate_all(batch, scale_lift=1, traces_frac=0.1, distance='sum_abs',
+                 time_frame_width=100, noverlap=None, window='boxcar'):
+    """ get metrics for all fields in batch """
     res = []
-    
+
     for i in range(len(batch.index)):
-        
         res.append({})
-    
+
         modifications = get_modifications_list(batch, i, scale_lift=scale_lift)
 
         origin, _ = modifications[0]
-        n_traces, n_ts = origin.shape
+        n_traces, _ = origin.shape
         n_use_traces = int(n_traces*traces_frac)
 
-        for j, (mod, description) in enumerate(modifications):
+        for mod, description in modifications:
             dist_m = get_windowed_spectrogram_dists(mod[0:n_use_traces], origin[0:n_use_traces], dist_fn=distance,
                                                     time_frame_width=time_frame_width, noverlap=noverlap, window=window)
             dist = np.mean(dist_m)
             res[i][description] = dist
-            
+
     return res
+
 
 def get_cv(arrs, q=0.95):
     """
