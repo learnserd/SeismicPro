@@ -9,9 +9,9 @@ import numpy as np
 
 sys.path.append('../..')
 
-from seismicpro.batchflow import Dataset, B
-from seismicpro.batchflow.models.torch import UNet
-from seismicpro.src import FieldIndex, TraceIndex, SeismicDataset
+from seismicpro.batchflow import B, Pipeline
+from seismicpro.batchflow.models.torch import UNet # pylint: disable=import-error
+from seismicpro.src import TraceIndex, SeismicDataset
 
 def make_prediction():
     """ Read the model and data paths and run inference pipeline.
@@ -29,8 +29,9 @@ def make_prediction():
                         the batch for inference stage.", default=1000)
     parser.add_argument('-ts', '--trace_len', type=int, help="The number of first samples \
                         of the trace to load.", default=751)
-    parser.add_argument('-dvc', '--device', type=str or torch.device, help="The device for \
+    parser.add_argument('-dvc', '--device', type=str, help="The device for \
                         inference. Can be 'cpu' or 'gpu'.", default='cpu')
+    parser.add_argument('-s', '--shift', type=float, help="Picking time phase shift", default=0)
     args = parser.parse_args()
     path_raw = args.path_raw
     model = args.path_model
@@ -39,9 +40,10 @@ def make_prediction():
     batch_size = args.batch_size
     trace_len = args.trace_len
     device = args.device
-    predict(path_raw, model, num_zero, save_to, batch_size, trace_len, device)
+    shift = args.shift
+    predict(path_raw, model, num_zero, save_to, batch_size, trace_len, device, shift)
 
-def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, device):
+def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, device, shift):
     """Make predictions and dump results using loaded model and path to data.
 
     Parameters
@@ -60,6 +62,8 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
         The number of first samples in the trace to load to the pipeline.
     device: str or torch.device, default: 'cpu'
         The device used for inference. Can be 'gpu' in case of avaliavle GPU.
+    shift: int, default: 0
+        Picking time correction for the given shift.
 
     """
     data = SeismicDataset(TraceIndex(name='raw', path=path_raw))
@@ -75,19 +79,22 @@ def predict(path_raw, path_model, num_zero, save_to, batch_size, trace_len, devi
     except OSError:
         pass
 
-    test_pipeline = (data.p
-                     .init_model('dynamic', UNet, 'my_model', config=config_predict)
-                     .load(components='raw', fmt='segy', tslice=np.arange(trace_len))
-                     .drop_zero_traces(num_zero=num_zero, src='raw')
-                     .standardize(src='raw', dst='raw')
-                     .add_components(components='predictions')
-                     .apply_transform_all(src='raw', dst='raw', func=lambda x: np.stack(x))
-                     .predict_model('my_model', B('raw'), fetches='predictions',
-                                    save_to=B('predictions', mode='a'))
-                     .mask_to_pick(src='predictions', dst='predictions', labels=False)
-                     .dump(src='predictions', fmt='picks', path=save_to,
-                           traces='raw', to_samples=True))
+    test_tmpl = (data.p
+                 .init_model('dynamic', UNet, 'my_model', config=config_predict)
+                 .load(components='raw', fmt='segy', tslice=np.arange(trace_len))
+                 .drop_zero_traces(num_zero=num_zero, src='raw')
+                 .standardize(src='raw', dst='raw')
+                 .add_components(components='predictions')
+                 .apply_transform_all(src='raw', dst='raw', func=lambda x: np.stack(x))
+                 .predict_model('my_model', B('raw'), fetches='predictions',
+                                save_to=B('predictions', mode='a'))
+                 .mask_to_pick(src='predictions', dst='predictions', labels=False)
+                )
+    if shift:
+        test_tmpl += Pipeline().shift_pick(src='predictions', dst='predictions', shift=np.pi*shift)
 
+    test_pipeline = test_tmpl + Pipeline().dump(src='predictions', fmt='picks', path=save_to,
+                                                traces='raw', to_samples=True)
     test_pipeline.run(batch_size, n_epochs=1, drop_last=False, shuffle=False, bar=True)
 
 if __name__ == "__main__":

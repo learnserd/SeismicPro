@@ -4,6 +4,7 @@ from textwrap import dedent
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
+from scipy.signal import hilbert
 import pywt
 import segyio
 
@@ -448,7 +449,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def _dump_picking(self, src, path, traces, to_samples, columns=None, max_len=[6, 4]):
+    def _dump_picking(self, src, path, traces, to_samples, columns=None, max_len=(6, 4)):
         """Dump picking to file.
 
         Parameters
@@ -490,7 +491,7 @@ class SeismicBatch(Batch):
             for row in df.iterrows():
                 for i, item in enumerate(row[1][:-1]):
                     f.write(str(item).ljust(max_len[i] + 8))
-                f.write(str(row[1][i+1]) + '\n')
+                f.write(str(row[1][-1]) + '\n')
         return self
 
     @action
@@ -1122,7 +1123,7 @@ class SeismicBatch(Batch):
         if not labels:
             data = np.argmax(data, axis=1)
 
-        dst_data = massive_block(data)
+        dst_data = massive_block(np.stack(data))
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
@@ -1252,4 +1253,24 @@ class SeismicBatch(Batch):
         equalized_field = field / p_95
 
         getattr(self, dst)[pos] = equalized_field
+        return self
+
+    @action
+    @inbatch_parallel(init='_init_component', target="threads")
+    def shift_pick(self, index, src, dst=None, src_raw='raw', shift=1.5*np.pi, thd=0.2):
+        """ Shifts picking time on given phase"""
+        pos = self.get_pos(None, src, index)
+        pick = getattr(self, src)[pos]
+        trace = getattr(self, src_raw)[pos]
+
+        analytic = hilbert(trace)
+        phase = np.unwrap(np.angle(analytic))
+        phase = np.squeeze(phase)
+
+        shifted_phase = phase[pick] - shift
+        phase_mod = np.abs(phase - shifted_phase)
+        raw_zero = phase_mod.argmin()
+        zero = np.where((np.abs(phase_mod - phase_mod[raw_zero])) < thd)[0][-1]
+
+        getattr(self, dst)[pos] = zero
         return self
