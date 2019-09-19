@@ -1251,3 +1251,50 @@ class SeismicBatch(Batch):
 
         getattr(self, dst)[pos] = equalized_field
         return self
+
+    @action
+    @apply_to_each_component
+    @inbatch_parallel(init='_init_component', targets='threads')
+    def crop(self, index, src, dst, origin=1, shape=(256, 256)):
+        """ Crop from seismograms. Orgin argument determine how the crop is perofrmed.
+
+        Parameters
+        ----------
+        src : str, array-like
+            The batch components to get the data from.
+        dst : str, array-like
+            The batch components to put the result in.
+        origin: list of tuples, int, str
+            Crop strategy.
+        Notes
+        ----
+        - Works properly only with FieldIndex.
+        - Origin might be list of coordinates (x, y), int or 'grid':
+          in case 'origin' is list of coordinates, each crop cut from the top-left corner with cords (x,y)
+          in case 'origin' is int, perform random crop 'origin' times
+          in case 'origin' == 'grid', cropping from image in a grid manner.
+        """
+        if not isinstance(self.index, FieldIndex):
+            raise NotImplementedError("Index must be FieldIndex, not {}".format(type(self.index)))
+
+        pos = self.get_pos(None, src, index)
+        field = getattr(self, src)[pos]
+
+        if origin == 'grid': # perform grid crop
+            pass
+            return self
+
+        if isinstance(origin, int): # random crop 'origin' times
+            x = np.random.randint(field.shape[0]-shape[0], size=origin)
+            y = np.random.randint(field.shape[1]-shape[1], size=origin)
+            origin = list(zip(x, y))
+
+        if np.ndim(origin) == 2 and len(origin[0]) == 2:
+            res = np.empty((len(origin), ), dtype='O')
+            for i, (x, y) in enumerate(origin): # perform crop
+                res[i] = field[x:x+shape[0], y:y+shape[1]]
+        else:
+            raise ValueError('Unknown origin format')
+
+        getattr(self, dst)[pos] = res
+        return self
