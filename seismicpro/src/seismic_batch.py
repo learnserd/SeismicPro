@@ -1253,7 +1253,6 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    @apply_to_each_component
     @inbatch_parallel(init='_init_component', targets='threads')
     def crop(self, index, src, dst, origin=1, shape=(256, 256)):
         """ Crop from seismograms. Orgin argument determine how the crop is perofrmed.
@@ -1266,6 +1265,7 @@ class SeismicBatch(Batch):
             The batch components to put the result in.
         origin: list of tuples, int, str
             Crop strategy.
+
         Notes
         ----
         - Works properly only with FieldIndex.
@@ -1277,24 +1277,38 @@ class SeismicBatch(Batch):
         if not isinstance(self.index, FieldIndex):
             raise NotImplementedError("Index must be FieldIndex, not {}".format(type(self.index)))
 
-        pos = self.get_pos(None, src, index)
-        field = getattr(self, src)[pos]
+        if isinstance(src, str):
+            src = (src, )
+        if dst is None:
+            dst = src
+        elif isinstance(dst, str):
+            dst = (dst, )
 
-        if origin == 'grid': # perform grid crop
-            pass
-            return self
+        first_iter = True
 
-        if isinstance(origin, int): # random crop 'origin' times
-            x = np.random.randint(field.shape[0]-shape[0], size=origin)
-            y = np.random.randint(field.shape[1]-shape[1], size=origin)
-            origin = list(zip(x, y))
+        for isrc, idst in zip(src, dst):
+            pos = self.get_pos(None, isrc, index)
+            field = getattr(self, isrc)[pos]
 
-        if np.ndim(origin) == 2 and len(origin[0]) == 2:
-            res = np.empty((len(origin), ), dtype='O')
-            for i, (x, y) in enumerate(origin): # perform crop
-                res[i] = field[x:x+shape[0], y:y+shape[1]]
-        else:
-            raise ValueError('Unknown origin format')
+            if first_iter:
 
-        getattr(self, dst)[pos] = res
+                if origin == 'grid': # perform grid crop
+                    raise NotImplementedError
+
+                if isinstance(origin, int): # random crop 'origin' times
+                    x = np.random.randint(field.shape[0]-shape[0], size=origin)
+                    y = np.random.randint(field.shape[1]-shape[1], size=origin)
+                    origin = list(zip(x, y))
+
+                first_iter = False
+
+            if np.ndim(origin) == 2 and len(origin[0]) == 2:
+                res = np.empty((len(origin), ), dtype='O')
+                for i, (x, y) in enumerate(origin): # perform crop
+                    res[i] = field[x:x+shape[0], y:y+shape[1]]
+            else:
+                raise ValueError('Unknown origin format')
+
+            getattr(self, idst)[pos] = res
+
         return self
