@@ -1257,7 +1257,7 @@ class SeismicBatch(Batch):
 
     @action
     @inbatch_parallel(init='_init_component', target="threads")
-    def shift_pick(self, index, src, dst=None, src_raw='raw', shift=1.5*np.pi, thd=0.2):
+    def shift_pick(self, index, src, dst=None, src_raw='raw', shift=1.5*np.pi, thd=0.05):
         """ Shifts picking time on given phase"""
         pos = self.get_pos(None, src, index)
         pick = getattr(self, src)[pos]
@@ -1269,8 +1269,10 @@ class SeismicBatch(Batch):
 
         shifted_phase = phase[pick] - shift
         phase_mod = np.abs(phase - shifted_phase)
-        raw_zero = phase_mod.argmin()
-        zero = np.where((np.abs(phase_mod - phase_mod[raw_zero])) < thd)[0][-1]
+        zero = phase_mod.argmin()
+
+        n_skip = (np.abs(trace[zero:]) > thd).argmax() - 1
+        zero += n_skip
 
         getattr(self, dst)[pos] = zero
         return self
