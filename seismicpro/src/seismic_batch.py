@@ -1150,7 +1150,12 @@ class SeismicBatch(Batch):
         long_win, lead_win = energy, energy
         lead_win[:, length_win:] = lead_win[:, length_win:] - lead_win[:, :-length_win]
         energy = lead_win / (long_win + eps)
-        self.add_components(dst, init=np.array([i for i in energy] + [None])[:-1])
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(energy, ind)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
@@ -1165,15 +1170,20 @@ class SeismicBatch(Batch):
         dst : str
             The batch components to put the result in.
 
-        Returns
+        Returnsc
         -------
         batch : SeismicBatch
             Batch with the predicted picking by MCM method.
         """
-        energy = np.stack(getattr(self, src))
+        energy = np.concatenate(getattr(self, src))
         energy = np.gradient(energy, axis=1)
         picking = np.argmax(energy, axis=1)
-        self.add_components(dst, np.array([i for i in picking] + [None])[:-1])
+
+        traces_in_item = [len(i) for i in getattr(self, src)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(picking, ind)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
     @action
