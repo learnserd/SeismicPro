@@ -1285,29 +1285,34 @@ class SeismicBatch(Batch):
             dst = (dst, )
 
         first_iter = True
-
         for isrc, idst in zip(src, dst):
             pos = self.get_pos(None, isrc, index)
             field = getattr(self, isrc)[pos]
 
             if first_iter:
 
-                if origin == 'grid': # perform grid crop
+                if origin == 'grid': # grid crop
                     raise NotImplementedError
 
-                if isinstance(origin, int): # random crop 'origin' times
+                elif isinstance(origin, int): # random crop 'origin' times
                     x = np.random.randint(field.shape[0]-shape[0], size=origin)
                     y = np.random.randint(field.shape[1]-shape[1], size=origin)
-                    origin = list(zip(x, y))
+                    coords = list(zip(x, y))
+
+                elif (np.ndim(origin) == 2) and (len(origin[0]) == 2): # crop the same coords for each seismogramm
+                    coords = origin
+
+                elif (np.ndim(origin) == 3) & (len(origin) == len(self)) & (len(origin[0][0]) == 2): # crop individual
+                    coords = origin[pos]
+
+                else:
+                    raise ValueError('Unknown origin format')
 
                 first_iter = False
 
-            if np.ndim(origin) == 2 and len(origin[0]) == 2:
-                res = np.empty((len(origin), ), dtype='O')
-                for i, (x, y) in enumerate(origin): # perform crop
-                    res[i] = field[x:x+shape[0], y:y+shape[1]]
-            else:
-                raise ValueError('Unknown origin format')
+            res = np.empty((len(coords), ), dtype='O')
+            for i, (x, y) in enumerate(coords): # perform crop
+                res[i] = field[x:x+shape[0], y:y+shape[1]]
 
             getattr(self, idst)[pos] = res
 
