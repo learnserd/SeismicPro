@@ -4,6 +4,43 @@ import tensorflow as tf
 from ..batchflow.batchflow.models.tf import EncoderDecoder
 from ..batchflow.batchflow.models.tf.layers import conv_block
 
+class Unet(EncoderDecoder):
+    """Class for Unet Attention model."""
+
+    @classmethod
+    def default_config(cls):
+        config = super().default_config()
+
+        body_config = config['body']
+
+        config['body'] = None
+        config['body/main'] = body_config
+
+        return config
+
+    def initial_block(self, inputs, *args, **kwargs):
+        _ = args, kwargs
+        return inputs
+
+    def body(self, inputs, *args, **kwargs):
+        _ = args
+        raw = inputs
+
+        main_config = kwargs.pop('main')
+
+        main = super().body(raw, name='main', **{**kwargs, **main_config}) # pylint: disable=not-a-mapping
+        return main, raw
+
+    def head(self, inputs, *args, **kwargs):
+        _ = args, kwargs
+        main, raw = inputs
+
+        #Get a single channel with linear activation for the main branch
+        main = conv_block(main, layout='c', filters=1, units=1, name='head_main')
+        self.store_to_attr("out_lift", main)
+
+        return main
+
 class UnetAtt(EncoderDecoder):
     """Class for Unet Attention model."""
 
