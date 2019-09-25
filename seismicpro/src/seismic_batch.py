@@ -10,7 +10,7 @@ import segyio
 
 from ..batchflow import action, inbatch_parallel, Batch, any_action_failed
 
-from .seismic_index import SegyFilesIndex, FieldIndex
+from .seismic_index import SegyFilesIndex, FieldIndex, KNNIndex
 
 from .utils import (FILE_DEPENDEND_COLUMNS, partialmethod, calculate_sdc_for_field, massive_block,
                     check_unique_fieldrecord_across_surveys)
@@ -483,6 +483,10 @@ class SeismicBatch(Batch):
             df = df.sort_values(by=sort_by)
 
         df = df.loc[self.indices]
+
+        if isinstance(self.index, KNNIndex):
+            df = df.iloc[::5, :]
+
         df['timeOffset'] = data.astype(int)
         df = df.reset_index(drop=self.index.name is None)[columns]
         df.columns = df.columns.droplevel(1)
