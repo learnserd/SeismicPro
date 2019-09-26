@@ -82,7 +82,7 @@ def split_folders(res_path, params):
             f.write('{},"{}"\n'.format(name, path))
 
 
-def shuffle_folders(path_to_fields, path_to_res, num_experts, params):
+def shuffle_folders(path_to_fields, path_to_res, num_experts, params, archive=False):
     """
     prepare files for each expert individually
     model aliases are shuffled
@@ -104,6 +104,10 @@ def shuffle_folders(path_to_fields, path_to_res, num_experts, params):
             os.makedirs(field_dir)
             mapping[expert_name][field_name] = {}
 
+            raw_old_path = os.path.join(path_to_fields, 'raw', '{}.sgy'.format(fi))
+            raw_new_path = os.path.join(field_dir, 'raw_{}.sgy'.format(fi))
+            shutil.copyfile(raw_old_path, raw_new_path)
+
             new_indices = random.sample(range(params.num_models), k=params.num_models)
             for old_idx, new_idx in enumerate(new_indices):
                 model_name = params.model_names[old_idx]
@@ -120,6 +124,9 @@ def shuffle_folders(path_to_fields, path_to_res, num_experts, params):
                 shutil.copyfile(field_path_old, field_path_new)
 
                 mapping[expert_name][field_name][field_name_new] = params.models_paths[old_idx]
+
+        if archive:
+            shutil.make_archive(expert_path, 'zip', expert_path)
 
     # print mapping to file
     with open(os.path.join(path_to_res, 'description.csv'), 'w') as csv_file:
@@ -138,4 +145,4 @@ def shuffle_folders(path_to_fields, path_to_res, num_experts, params):
 if __name__ == '__main__':
     test_res_path = "test_res"
     split_folders(test_res_path, test_params)
-    shuffle_folders(test_res_path, "experts", num_experts=3, params=test_params)
+    shuffle_folders(test_res_path, "experts", num_experts=3, params=test_params, archive=True)
