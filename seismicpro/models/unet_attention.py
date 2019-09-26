@@ -36,7 +36,7 @@ class Unet(EncoderDecoder):
         main, raw = inputs
 
         #Get a single channel with linear activation for the main branch
-        main = conv_block(main, layout='c', filters=1, units=1, name='head_main')
+        main = conv_block(main, layout='c', filters=1, kernel_size=(3, 3), name='head_main')
         self.store_to_attr("out_lift", main)
 
         return main
