@@ -23,7 +23,7 @@ class UnetAtt(EncoderDecoder):
         _ = args, kwargs
         return inputs
 
-    def body(self, inputs, *args, **kwargs):
+    def body(self, inputs, name='body', *args, **kwargs):
         _ = args
         raw, offset = inputs
 
