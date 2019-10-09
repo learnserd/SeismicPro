@@ -1117,10 +1117,21 @@ class SeismicBatch(Batch):
             Batch with the predicted picking times.
         """
         data = getattr(self, src)
+
         if not labels:
             data = np.argmax(data, axis=1)
 
+        traces_in_item = [len(i) for i in data]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        if isinstance(self.index, FieldIndex):
+            data = np.concatenate(data)
+
         dst_data = massive_block(data)
+
+        if isinstance(self.index, FieldIndex):
+            dst_data = np.split(dst_data, ind)
+
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
