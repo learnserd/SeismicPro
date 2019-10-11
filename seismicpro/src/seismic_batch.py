@@ -4,6 +4,7 @@ from textwrap import dedent
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
+from scipy.signal import hilbert
 import pywt
 import segyio
 
@@ -1098,7 +1099,7 @@ class SeismicBatch(Batch):
         return self
 
     @action
-    def mask_to_pick(self, src, dst, labels=True):
+    def mask_to_pick(self, src, dst, src_raw='raw', labels=True):
         """Convert the mask to picking time. Piciking time corresponds to the
         begininning of the longest block of consecutive ones in the mask.
 
@@ -1121,17 +1122,15 @@ class SeismicBatch(Batch):
         if not labels:
             data = np.argmax(data, axis=1)
 
-        traces_in_item = [len(i) for i in data]
-        ind = np.cumsum(traces_in_item)[:-1]
-
         if isinstance(self.index, FieldIndex):
             data = np.concatenate(data)
 
         dst_data = massive_block(data)
 
-        if isinstance(self.index, FieldIndex):
-            dst_data = np.split(dst_data, ind)
+        traces_in_item = [len(i) for i in getattr(self, src_raw)]
+        ind = np.cumsum(traces_in_item)[:-1]
 
+        dst_data = np.split(dst_data, ind)
         setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
 
@@ -1337,4 +1336,29 @@ class SeismicBatch(Batch):
 
             getattr(self, idst)[pos] = res
 
+        return self
+
+    @action
+    @apply_to_each_component
+    def pick_phase(self, src, dst=None, src_raw='raw'):
+
+        if isinstance(self.index, FieldIndex):
+            pick = np.concatenate(getattr(self, src)).astype(int)
+        else:
+            pick = getattr(self, src).astype(int)
+
+        trace = np.concatenate(getattr(self, src_raw))
+        trace = np.squeeze(trace)
+
+        analytic = hilbert(trace, axis=1)
+        phase = np.angle(analytic)
+
+        ix = (np.arange(len(pick)), pick)
+        dst_data = phase[ix]
+
+        traces_in_item = [len(i) for i in getattr(self, src_raw)]
+        ind = np.cumsum(traces_in_item)[:-1]
+
+        dst_data = np.split(dst_data, ind)
+        setattr(self, dst, np.array([i for i in dst_data] + [None])[:-1])
         return self
