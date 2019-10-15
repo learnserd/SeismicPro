@@ -875,7 +875,7 @@ class SeismicBatch(Batch):
 
     def seismic_plot(self, src, index, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
                      src_picking=None, s=None, scatter_color=None, figsize=None,
-                     save_to=None, dpi=None, line_color=None, title=None, **kwargs):
+                     save_to=None, dpi=None, line_color=None, title=None, pick_to_samples=True, **kwargs):
         """Plot seismic traces.
 
         Parameters
@@ -919,10 +919,17 @@ class SeismicBatch(Batch):
         if len(np.atleast_1d(src)) == 1:
             src = (src,)
 
+        if isinstance(src_picking, str):
+            src_picking = (src_picking,)
+
         if src_picking is not None:
-            rate = self.meta[src[0]]['interval'] / 1e3
-            picking = getattr(self, src_picking)[pos] / rate
-            pts_picking = (range(len(picking)), picking)
+            pts_picking = []
+            for sp in src_picking:
+                picking = getattr(self, sp)[pos]
+                if pick_to_samples:
+                    rate = self.meta[src[0]]['interval'] / 1e3
+                    picking /= rate
+                pts_picking.append((range(len(picking)), picking))
         else:
             pts_picking = None
 
@@ -1341,7 +1348,7 @@ class SeismicBatch(Batch):
     @action
     @apply_to_each_component
     def pick_phase(self, src, dst=None, src_raw='raw'):
-
+        """ Computes phases of the trace in the point of first breaks. """
         if isinstance(self.index, FieldIndex):
             pick = np.concatenate(getattr(self, src)).astype(int)
         else:

@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import patches, colors as mcolors
+from matplotlib.pyplot import cm
 from .utils import measure_gain_amplitude
 
 class IndexTracker:
@@ -44,7 +45,7 @@ class IndexTracker:
             self.ax.set_xlim([0, img.shape[0]])
 
 def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disable=too-many-branches, too-many-arguments
-                 pts=None, s=None, scatter_color=None, names=None, figsize=None,
+                 pts=None, s=50, scatter_color=None, names=None, figsize=None,
                  save_to=None, dpi=None, line_color=None, title=None, **kwargs):
     """Plot seismic traces.
 
@@ -148,7 +149,17 @@ def seismic_plot(arrs, wiggle=False, xlim=None, ylim=None, std=1, # pylint: disa
             plt.xlim(xlim)
 
         if pts is not None:
-            ax[0, i].scatter(*pts, s=s, c=scatter_color)
+            if isinstance(pts, tuple):
+                pts = (pts,)
+            if isinstance(s, int):
+                s = [s] * len(pts)
+            if isinstance(scatter_color, str):
+                scatter_color = (scatter_color,)
+            if scatter_color is None:
+                scatter_color = cm.rainbow(np.linspace(0, 1, len(pts)))
+            for ixpts, ixs, ixsc in zip(pts, s, scatter_color):
+                ax[0, i].scatter(*ixpts, s=ixs, c=[ixsc]*len(ixpts[0]), alpha=0.8)
+
 
         ax[0, i].set_aspect('auto')
 
